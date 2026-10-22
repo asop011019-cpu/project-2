@@ -1,0 +1,305 @@
+import type { ClothingCategory, GenreGroup, Style } from "../types.ts";
+
+export const CLOTHING_CATEGORIES: ClothingCategory[] = [
+  {
+    id: "menswear",
+    name: "남성복",
+    order: 10,
+  },
+  {
+    id: "womenswear",
+    name: "여성복",
+    order: 20,
+  },
+];
+
+export const GENRE_GROUPS: GenreGroup[] = [
+  {
+    id: "men_casual_group",
+    categoryId: "menswear",
+    name: "캐주얼 계열",
+    description:
+      "서로 겹칠 수 있는 스타일 안내 묶음입니다. 하나의 취향으로 제한하지 않아요.",
+    order: 10,
+  },
+  {
+    id: "men_formal_group",
+    categoryId: "menswear",
+    name: "포멀/테일러드 계열",
+    description:
+      "서로 겹칠 수 있는 스타일 안내 묶음입니다. 하나의 취향으로 제한하지 않아요.",
+    order: 20,
+  },
+  {
+    id: "men_street_group",
+    categoryId: "menswear",
+    name: "스트릿/기타",
+    description:
+      "서로 겹칠 수 있는 스타일 안내 묶음입니다. 하나의 취향으로 제한하지 않아요.",
+    order: 30,
+  },
+  {
+    id: "women_daily_group",
+    categoryId: "womenswear",
+    name: "캐주얼/데일리",
+    description:
+      "서로 겹칠 수 있는 스타일 안내 묶음입니다. 하나의 취향으로 제한하지 않아요.",
+    order: 10,
+  },
+  {
+    id: "women_feminine_group",
+    categoryId: "womenswear",
+    name: "페미닌/로맨틱",
+    description:
+      "서로 겹칠 수 있는 스타일 안내 묶음입니다. 하나의 취향으로 제한하지 않아요.",
+    order: 20,
+  },
+  {
+    id: "women_formal_group",
+    categoryId: "womenswear",
+    name: "포멀/클래식",
+    description:
+      "서로 겹칠 수 있는 스타일 안내 묶음입니다. 하나의 취향으로 제한하지 않아요.",
+    order: 30,
+  },
+  {
+    id: "women_other_group",
+    categoryId: "womenswear",
+    name: "미니멀/스트릿",
+    description:
+      "서로 겹칠 수 있는 스타일 안내 묶음입니다. 하나의 취향으로 제한하지 않아요.",
+    order: 40,
+  },
+];
+
+/** All 24 definitions start as drafts. No image, URL, or product is fabricated. */
+export const STYLES: Style[] = [
+  {
+    id: "men_casual",
+    categoryId: "menswear",
+    genreGroupId: "men_casual_group",
+    name: "캐주얼",
+    description: "티셔츠와 데님, 운동화를 편하게 조합하는 일상 스타일이에요.",
+    order: 10,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_gorpcore",
+    categoryId: "menswear",
+    genreGroupId: "men_casual_group",
+    name: "고프코어",
+    description:
+      "아웃도어 느낌의 재킷과 실용적인 바지, 트레일 운동화를 일상에 더해요.",
+    order: 20,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_amekaji",
+    categoryId: "menswear",
+    genreGroupId: "men_casual_group",
+    name: "아메카지",
+    description: "데님과 작업복 느낌의 옷을 여유 있게 겹쳐 입어요.",
+    order: 30,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_cityboy",
+    categoryId: "menswear",
+    genreGroupId: "men_casual_group",
+    name: "시티보이",
+    description: "넉넉한 셔츠와 바지로 느긋한 도시 일상복을 만들어요.",
+    order: 40,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_normcore",
+    categoryId: "menswear",
+    genreGroupId: "men_casual_group",
+    name: "놈코어",
+    description: "눈에 띄는 장식보다 익숙하고 편한 기본 옷의 균형을 즐겨요.",
+    order: 50,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_classic",
+    categoryId: "menswear",
+    genreGroupId: "men_formal_group",
+    name: "클래식",
+    description: "재킷과 반듯한 바지, 단정한 구두로 차분한 격식을 갖춰요.",
+    order: 10,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_ivy",
+    categoryId: "menswear",
+    genreGroupId: "men_formal_group",
+    name: "아이비",
+    description:
+      "셔츠와 니트, 면바지를 자연스럽게 겹쳐 편안하면서 단정하게 입어요.",
+    order: 20,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_preppy",
+    categoryId: "menswear",
+    genreGroupId: "men_formal_group",
+    name: "프레피",
+    description: "카라 상의와 니트에 산뜻한 색과 단정한 스포츠 감각을 더해요.",
+    order: 30,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_modern_formal",
+    categoryId: "menswear",
+    genreGroupId: "men_formal_group",
+    name: "모던 포멀",
+    description: "장식을 줄인 재킷과 매끈한 선으로 현대적인 격식을 만들어요.",
+    order: 40,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_streetwear",
+    categoryId: "menswear",
+    genreGroupId: "men_street_group",
+    name: "스트릿웨어",
+    description: "넉넉한 옷과 운동화에 그래픽이나 색으로 개성을 더해요.",
+    order: 10,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_techwear",
+    categoryId: "menswear",
+    genreGroupId: "men_street_group",
+    name: "테크웨어",
+    description:
+      "포켓과 끈 같은 실용적인 디테일을 입체적인 실루엣으로 조합해요.",
+    order: 20,
+    publicationStatus: "draft",
+  },
+  {
+    id: "men_minimal",
+    categoryId: "menswear",
+    genreGroupId: "men_street_group",
+    name: "미니멀",
+    description: "색과 장식을 줄이고 옷의 선과 길이로 조용한 균형을 만들어요.",
+    order: 30,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_daily_casual",
+    categoryId: "womenswear",
+    genreGroupId: "women_daily_group",
+    name: "데일리 캐주얼",
+    description: "티셔츠와 데님, 편한 신발로 매일 손이 가는 조합을 만들어요.",
+    order: 10,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_gorpcore",
+    categoryId: "womenswear",
+    genreGroupId: "women_daily_group",
+    name: "고프코어",
+    description:
+      "아웃도어 느낌의 재킷과 실용적인 하의, 운동화를 일상에 섞어요.",
+    order: 20,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_cityboy",
+    categoryId: "womenswear",
+    genreGroupId: "women_daily_group",
+    name: "시티보이",
+    description: "넉넉한 셔츠와 편한 바지로 느긋한 도시 분위기를 만들어요.",
+    order: 30,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_y2k",
+    categoryId: "womenswear",
+    genreGroupId: "women_daily_group",
+    name: "Y2K",
+    description:
+      "짧은 상의와 볼륨 있는 하의에 반짝이는 소품이나 선명한 색을 더해요.",
+    order: 40,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_feminine",
+    categoryId: "womenswear",
+    genreGroupId: "women_feminine_group",
+    name: "페미닌 룩",
+    description:
+      "부드러운 선의 상의와 스커트, 단정한 신발로 우아한 균형을 만들어요.",
+    order: 10,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_romantic",
+    categoryId: "womenswear",
+    genreGroupId: "women_feminine_group",
+    name: "로맨틱/러블리",
+    description:
+      "프릴과 부드러운 색, 풍성한 실루엣으로 사랑스러운 분위기를 더해요.",
+    order: 20,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_coquette",
+    categoryId: "womenswear",
+    genreGroupId: "women_feminine_group",
+    name: "코켓 코어",
+    description:
+      "리본과 레이스 같은 작은 장식을 섬세한 색과 가벼운 겹침으로 즐겨요.",
+    order: 30,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_classic_tailored",
+    categoryId: "womenswear",
+    genreGroupId: "women_formal_group",
+    name: "클래식 테일러드",
+    description:
+      "형태가 반듯한 재킷과 바지 또는 스커트로 차분한 격식을 갖춰요.",
+    order: 10,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_preppy",
+    categoryId: "womenswear",
+    genreGroupId: "women_formal_group",
+    name: "프레피 룩",
+    description: "카라 상의와 니트에 주름 스커트나 면바지, 산뜻한 색을 더해요.",
+    order: 20,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_old_money",
+    categoryId: "womenswear",
+    genreGroupId: "women_formal_group",
+    name: "올드머니 룩",
+    description:
+      "차분한 색의 니트와 재킷을 깔끔하게 조합해 절제된 분위기를 만들어요.",
+    order: 30,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_minimalism",
+    categoryId: "womenswear",
+    genreGroupId: "women_other_group",
+    name: "미니멀리즘",
+    description:
+      "장식을 덜어낸 옷을 비슷한 색으로 조합하고 길이와 여백을 즐겨요.",
+    order: 10,
+    publicationStatus: "draft",
+  },
+  {
+    id: "women_streetwear",
+    categoryId: "womenswear",
+    genreGroupId: "women_other_group",
+    name: "스트릿 웨어",
+    description:
+      "넉넉한 옷과 운동화에 그래픽, 색, 길이 차이로 자유롭게 표현해요.",
+    order: 20,
+    publicationStatus: "draft",
+  },
+];
