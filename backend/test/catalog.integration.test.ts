@@ -21,7 +21,7 @@ test("frozen order survives reordering and new styles until explicit catalog ref
   const gorp = c.repository
     .catalog()
     .styles.find((style) => style.id === "men_gorpcore")!;
-  importCatalog(c.db, { styles: [{ ...gorp, order: 0 }] });
+  importCatalog(c.db, { styles: [{ ...gorp, explorationOrder: 0 }] });
   await publish(c, ["men_amekaji"]);
   const restored = (await oldUser.request("GET", base)).json();
   assert.deepEqual(restored.activeStyleOrder, original.activeStyleOrder);

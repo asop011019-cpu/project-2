@@ -23,6 +23,8 @@ export interface Style {
   description: string;
   order: number;
   publicationStatus: PublicationStatus;
+  /** Independent from genre display order; existing exploration order is retained. */
+  explorationOrder: number;
 }
 export interface StyleImage {
   id: string;
@@ -160,8 +162,20 @@ export interface CatalogView {
   version: number;
   contentStatus: "ready" | "not_ready";
   categories: ClothingCategory[];
-  genreGroups: GenreGroup[];
+  genreGroups: GenreGroupView[];
   styles: StyleSummary[];
+}
+export interface GenreGroupView extends GenreGroup {
+  /** Taxonomy labels only; not-ready definitions are not exploration content. */
+  styleDefinitions: {
+    id: string;
+    name: string;
+    order: number;
+    contentStatus: "ready" | "not_ready";
+  }[];
+  availableStyleCount: number;
+  contentStatus: "ready" | "not_ready";
+  representativeImage: PublicStyleImage | null;
 }
 export interface ApiErrorResponse {
   error: {

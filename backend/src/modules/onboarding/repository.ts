@@ -45,7 +45,7 @@ export class SqliteOnboardingRepository implements OnboardingRepository {
         .all() as unknown as CatalogSnapshot["genreGroups"],
       styles: this.db
         .prepare(
-          'SELECT id,category_id AS categoryId,genre_group_id AS genreGroupId,name,description,position AS "order",publication_status AS publicationStatus FROM styles ORDER BY position,id',
+          'SELECT id,category_id AS categoryId,genre_group_id AS genreGroupId,name,description,position AS "order",publication_status AS publicationStatus,exploration_order AS explorationOrder FROM styles ORDER BY exploration_order,id',
         )
         .all() as unknown as CatalogSnapshot["styles"],
       images: this.db

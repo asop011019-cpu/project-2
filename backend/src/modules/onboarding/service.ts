@@ -37,9 +37,10 @@ export class OnboardingService {
   catalog(categoryId?: ClothingCategoryId): CatalogView {
     return this.repository.transaction(() => {
       const catalog = this.repository.catalog();
-      const styles = explorableStyles(catalog)
-        .filter((style) => !categoryId || style.categoryId === categoryId)
-        .map(summaryOf);
+      const available = explorableStyles(catalog).filter(
+        (style) => !categoryId || style.categoryId === categoryId,
+      );
+      const styles = available.map(summaryOf);
       return {
         version: catalog.version,
         contentStatus: styles.length
@@ -48,9 +49,32 @@ export class OnboardingService {
         categories: catalog.categories.filter(
           (category) => !categoryId || category.id === categoryId,
         ),
-        genreGroups: catalog.genreGroups.filter(
-          (group) => !categoryId || group.categoryId === categoryId,
-        ),
+        genreGroups: catalog.genreGroups
+          .filter((group) => !categoryId || group.categoryId === categoryId)
+          .map((group) => {
+            const published = available.filter(
+              (style) => style.genreGroupId === group.id,
+            );
+            return {
+              ...group,
+              styleDefinitions: catalog.styles
+                .filter((style) => style.genreGroupId === group.id)
+                .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+                .map((style) => ({
+                  id: style.id,
+                  name: style.name,
+                  order: style.order,
+                  contentStatus: published.some((item) => item.id === style.id)
+                    ? ("ready" as const)
+                    : ("not_ready" as const),
+                })),
+              availableStyleCount: published.length,
+              contentStatus: published.length
+                ? ("ready" as const)
+                : ("not_ready" as const),
+              representativeImage: published[0]?.images[0] ?? null,
+            };
+          }),
         styles,
       };
     });

@@ -32,11 +32,11 @@ test("real migration, seed, export and import CLIs preserve content and reject e
       },
     );
   assert.match(run("migrate"), /schemaVersion/);
-  assert.match(run("seed"), /"styles":24/);
+  assert.match(run("seed"), /"styles":54/);
   const filename = path.join(c.directory, "manifest.json");
   run("export-catalog", [filename]);
   const manifest = JSON.parse(await readFile(filename, "utf8"));
-  assert.equal(manifest.styles.length, 24);
+  assert.equal(manifest.styles.length, 54);
   assert.equal(manifest.images.length, 4);
   assert.equal(manifest.tokenHash, undefined);
   assert.throws(() => run("export-catalog", [filename]));

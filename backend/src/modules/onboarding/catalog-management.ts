@@ -89,6 +89,7 @@ export const catalogImportSchema = z
             description: z.string().trim().min(1).max(1000),
             order,
             publicationStatus: publication,
+            explorationOrder: order.optional(),
           })
           .strict(),
       )
@@ -115,7 +116,7 @@ export function seedCatalog(db: DatabaseSync): void {
         group.run(g.id, g.categoryId, g.name, g.description, g.order).changes,
       );
     const style = db.prepare(
-      "INSERT INTO styles VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
+      "INSERT INTO styles VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
     );
     for (const s of STYLES)
       changed += Number(
@@ -127,6 +128,7 @@ export function seedCatalog(db: DatabaseSync): void {
           s.description,
           s.order,
           s.publicationStatus,
+          s.explorationOrder,
         ).changes,
       );
     if (changed)
@@ -176,11 +178,21 @@ export function importCatalog(db: DatabaseSync, input: unknown): void {
       const previous = old.styles.find((row) => row.id === s.id);
       if (previous && previous.categoryId !== s.categoryId)
         throw new Error("Style category identity cannot change.");
-      if (sameFields(previous, s)) continue;
+      const explorationOrder =
+        s.explorationOrder ??
+        previous?.explorationOrder ??
+        Number(
+          db
+            .prepare(
+              "SELECT coalesce(max(exploration_order),0)+10 AS next FROM styles WHERE category_id=?",
+            )
+            .get(s.categoryId)!["next"],
+        );
+      if (sameFields(previous, { ...s, explorationOrder })) continue;
       db.prepare(
-        `INSERT INTO styles VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+        `INSERT INTO styles VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
         genre_group_id=excluded.genre_group_id,name=excluded.name,description=excluded.description,
-        position=excluded.position,publication_status=excluded.publication_status`,
+        position=excluded.position,publication_status=excluded.publication_status,exploration_order=excluded.exploration_order`,
       ).run(
         s.id,
         s.categoryId,
@@ -189,6 +201,7 @@ export function importCatalog(db: DatabaseSync, input: unknown): void {
         s.description,
         s.order,
         s.publicationStatus,
+        explorationOrder,
       );
       changed = true;
     }

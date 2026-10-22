@@ -54,9 +54,6 @@ export function visibleImages(
     .slice(0, MAX_STYLE_IMAGES);
 }
 export function explorableStyles(catalog: CatalogSnapshot): StyleDetail[] {
-  const groupOrder = new Map(
-    catalog.genreGroups.map((group) => [group.id, group.order]),
-  );
   return catalog.styles
     .filter((style) => style.publicationStatus === "published")
     .map((style) => ({
@@ -66,9 +63,7 @@ export function explorableStyles(catalog: CatalogSnapshot): StyleDetail[] {
     .filter((style) => style.images.length >= MIN_STYLE_IMAGES)
     .sort(
       (a, b) =>
-        groupOrder.get(a.genreGroupId)! - groupOrder.get(b.genreGroupId)! ||
-        a.order - b.order ||
-        a.id.localeCompare(b.id),
+        a.explorationOrder - b.explorationOrder || a.id.localeCompare(b.id),
     )
     .map((style) => ({ ...style, imageCount: style.images.length }));
 }

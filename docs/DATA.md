@@ -28,7 +28,7 @@ Fastify routes → Zod 요청 검증 → OnboardingService → domain + Onboardi
 | --- | --- |
 | ClothingCategory / `clothing_categories` | `menswear`, `womenswear`, 이름·순서. 성별 정체성이 아님 |
 | GenreGroup / `genre_groups` | 안정적인 ID, 범주 FK, 이름·설명·순서 |
-| Style / `styles` | ID, 범주·상위 장르 FK, 이름·설명·순서, draft/published |
+| Style / `styles` | ID, 범주·상위 장르 FK, 이름·설명·장르 내 order, 독립적인 explorationOrder, draft/published |
 | StyleImage / `style_images` | ID, 스타일·범주 FK, 원본·썸네일 참조, alt·크기·형식·생성 여부·순서·출처·제작자·사용 권한·게시 상태·원본 해시 |
 | OnboardingSession / `onboarding_sessions` | 공개 ID, 토큰의 SHA-256 해시, 현재 선택 범주, 시작·갱신·만료 시각 |
 | 범주별 세션 / `category_sessions` | 세션+범주 PK, 목록 버전, 현재 ID, 진행/완료 상태, 시작·갱신·완료 시각 |
@@ -42,6 +42,7 @@ SQLite `STRICT`, CHECK, UNIQUE, 복합 FK를 사용합니다. 스타일과 상�
 
 ## 진행과 카탈로그 버전
 
+- 장르 분류 개편은 [분류 갱신 문서](GENRE_CLASSIFICATION.md)를 따릅니다. 스키마 v2는 기존 실제 탐색 순서를 explorationOrder에 보존한 뒤 장르·이름·분류 순서를 바꿉니다. 세션 진행·저장 규칙과 고정 목록은 바꾸지 않습니다.
 - 범주를 **처음 선택할 때** 해당 범주의 현재 탐색 가능한 목록과 버전을 고정합니다. 다시 돌아오면 기존 목록·위치·응답을 복원합니다.
 - 후속 운영자 등록으로 순서가 바뀌거나 스타일이 추가되어도 기존 탐색에 자동 삽입하지 않습니다.
 - 현재 공개 조건을 잃은 스타일은 요청 시 고정 목록에서 철회 처리합니다. 한 번 철회한 항목은 재게시되어도 자동 복귀하지 않습니다. 원래 목록 수, 현재 목록 수, 철회 수를 별도로 반환합니다.

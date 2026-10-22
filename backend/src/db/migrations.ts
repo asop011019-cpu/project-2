@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
+import { migrateGenreClassification } from "./genre-classification-migration.ts";
 
-const migrations = [
+const migrations: (string | ((db: DatabaseSync) => void))[] = [
   `CREATE TABLE catalog_state (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL CHECK(version>=0)) STRICT;
    INSERT INTO catalog_state VALUES(1,0);
    CREATE TABLE clothing_categories (
@@ -67,6 +68,7 @@ const migrations = [
    ) STRICT;
    CREATE INDEX sessions_expiry_idx ON onboarding_sessions(expires_at);
    CREATE INDEX style_images_style_idx ON style_images(style_id,position);`,
+  migrateGenreClassification,
 ];
 
 export function migrate(db: DatabaseSync): void {
@@ -80,7 +82,9 @@ export function migrate(db: DatabaseSync): void {
   for (let index = current; index < migrations.length; index++) {
     db.exec("BEGIN IMMEDIATE");
     try {
-      db.exec(migrations[index]!);
+      const migration = migrations[index]!;
+      if (typeof migration === "string") db.exec(migration);
+      else migration(db);
       db.exec(`PRAGMA user_version = ${index + 1}`);
       db.exec("COMMIT");
     } catch (error) {

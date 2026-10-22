@@ -11,13 +11,13 @@ import type {
 } from "../src/modules/onboarding/types.ts";
 
 const base = "/api/onboarding/session";
-test("seeds exactly 12 styles per category without fabricating images or public readiness", async (t) => {
+test("seeds 24 menswear and 30 womenswear definitions without fabricating images or readiness", async (t) => {
   const c = await context();
   t.after(c.cleanup);
   const catalog = c.repository.catalog();
   assert.equal(catalog.categories.length, 2);
-  assert.equal(catalog.genreGroups.length, 7);
-  assert.equal(catalog.styles.length, 24);
+  assert.equal(catalog.genreGroups.length, 10);
+  assert.equal(catalog.styles.length, 54);
   assert.equal(catalog.images.length, 0);
   assert.deepEqual(
     catalog.styles
@@ -25,18 +25,30 @@ test("seeds exactly 12 styles per category without fabricating images or public 
       .map((s) => s.name)
       .sort(),
     [
-      "캐주얼",
+      "모던 캐주얼",
       "고프코어",
       "아메카지",
       "시티보이",
       "놈코어",
-      "클래식",
+      "클래식 테일러드",
       "아이비",
       "프레피",
       "모던 포멀",
       "스트릿웨어",
       "테크웨어",
       "미니멀",
+      "비즈니스 캐주얼",
+      "워크웨어",
+      "밀리터리 캐주얼",
+      "웨스턴",
+      "프렌치 시크",
+      "브리티시 클래식·컨트리",
+      "이탈리안 캐주얼",
+      "스케이트",
+      "힙합",
+      "그런지",
+      "락시크",
+      "펑크",
     ].sort(),
   );
   assert.deepEqual(
@@ -45,18 +57,36 @@ test("seeds exactly 12 styles per category without fabricating images or public 
       .map((s) => s.name)
       .sort(),
     [
-      "데일리 캐주얼",
+      "모던 데일리",
       "고프코어",
       "시티보이",
       "Y2K",
-      "페미닌 룩",
-      "로맨틱/러블리",
-      "코켓 코어",
+      "페미닌",
+      "로맨틱·러블리",
+      "코켓",
       "클래식 테일러드",
-      "프레피 룩",
-      "올드머니 룩",
-      "미니멀리즘",
-      "스트릿 웨어",
+      "프레피",
+      "올드머니",
+      "미니멀",
+      "스트릿웨어",
+      "모던 포멀",
+      "비즈니스 캐주얼",
+      "드뮤어",
+      "프렌치 시크",
+      "브리티시 클래식·컨트리",
+      "아메카지",
+      "워크웨어",
+      "웨스턴",
+      "아이비",
+      "발레코어",
+      "내추럴",
+      "모리걸",
+      "보헤미안",
+      "놈코어",
+      "스포티·애슬레저",
+      "테크웨어",
+      "그런지",
+      "락시크",
     ].sort(),
   );
   assert.ok(catalog.styles.every((s) => s.publicationStatus === "draft"));
@@ -94,7 +124,7 @@ test("public catalog branches by category, supports mixed formats, and never exp
     men.styles.map((s: { id: string }) => s.id),
     ["men_casual"],
   );
-  assert.equal(men.genreGroups.length, 3);
+  assert.equal(men.genreGroups.length, 5);
   const women = (
     await visitor.request(
       "GET",
@@ -105,7 +135,7 @@ test("public catalog branches by category, supports mixed formats, and never exp
     women.styles.map((s: { id: string }) => s.id),
     ["women_daily_casual"],
   );
-  assert.equal(women.genreGroups.length, 4);
+  assert.equal(women.genreGroups.length, 5);
   const detail = (
     await visitor.request("GET", "/api/onboarding/styles/men_casual")
   ).json();

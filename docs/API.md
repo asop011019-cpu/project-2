@@ -32,7 +32,15 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 
 ## 타입과 필드
 
-`CatalogView`는 `version`, `contentStatus`, `categories`, `genreGroups`, `styles`를 반환합니다. 기본 데이터는 24개 초안이나 공개 API의 `styles`는 현재 탐색 가능한 목록뿐입니다. 빈 배열을 12개의 가짜 공개 항목으로 채우지 않습니다. 상위 장르 ID는 스타일의 `genreGroupId`와 연결합니다.
+`CatalogView`는 `version`, `contentStatus`, `categories`, `genreGroups`, `styles`를 반환합니다. 기본 분류는 남성복 24개·여성복 30개이며 상위 장르는 각각 5개입니다. 최상위 `styles`는 기존과 같이 현재 탐색 가능한 목록뿐입니다. 상위 장르 ID는 스타일의 `genreGroupId`와 연결합니다.
+
+`genreGroups`는 기존 ID·범주·이름·설명·순서를 유지하면서 다음 조회 필드를 추가합니다.
+
+- `styleDefinitions`: 장르 내 `order` 순서의 `{id,name,order,contentStatus}` 분류 안내. 미준비 스타일도 이름으로 소개하지만 이미지·설명·저장용 탐색 콘텐츠로 취급하지 않습니다.
+- `availableStyleCount`, `contentStatus`: 실제 게시 조건을 만족한 스타일 수와 ready/not_ready.
+- `representativeImage`: 게시 조건을 만족한 실제 이미지 메타데이터 또는 null. 준비 중인 사진이나 URL을 생성하지 않습니다.
+
+분류 안내는 탐색 목록과 구별됩니다. 실제 탐색에는 세션의 `activeStyleOrder`만 사용합니다. 스타일의 `order`는 장르 내 분류 순서, `explorationOrder`는 기존 탐색 순서 보존용 서버 정렬값입니다. 장르 개편만으로 탐색 순서를 바꾸지 않습니다. 상위 장르 선택·복수 선택·세션 반영 API는 이번 단계에 추가하지 않았습니다. [분류표와 ID 보존](GENRE_CLASSIFICATION.md)을 참고하세요.
 
 `StyleDetail`은 스타일 ID·범주 ID·상위 장르 ID·이름·설명·순서·게시 상태·`imageCount`와 `images`를 반환합니다. 이미지별 핵심 필드는 다음과 같습니다.
 
@@ -106,7 +114,7 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
   version: 1,
   contentStatus: "not_ready",
   categories: [{ id: "menswear", name: "남성복", order: 10 }],
-  genreGroups: [/* 등록된 남성복 상위 장르 3개 */],
+  genreGroups: [/* 등록된 남성복 상위 장르 5개와 styleDefinitions·준비 상태 */],
   styles: []
 }
 ```
