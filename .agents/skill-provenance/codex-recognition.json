@@ -1,0 +1,39 @@
+{
+  "codexVersion": "0.163.0",
+  "cwd": "/workspace/project-2",
+  "method": "skills/list",
+  "forceReload": true,
+  "errors": [],
+  "skills": [
+    {
+      "name": "emil-design-eng",
+      "path": "/workspace/project-2/.agents/skills/emil-design-eng/SKILL.md",
+      "scope": "repo",
+      "enabled": true
+    },
+    {
+      "name": "frontend-design",
+      "path": "/workspace/project-2/.agents/skills/frontend-design/SKILL.md",
+      "scope": "repo",
+      "enabled": true
+    },
+    {
+      "name": "hallmark",
+      "path": "/workspace/project-2/.agents/skills/hallmark/SKILL.md",
+      "scope": "repo",
+      "enabled": true
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "path": "/workspace/project-2/.agents/skills/ui-ux-pro-max/SKILL.md",
+      "scope": "repo",
+      "enabled": true
+    },
+    {
+      "name": "web-design-guidelines",
+      "path": "/workspace/project-2/.agents/skills/web-design-guidelines/SKILL.md",
+      "scope": "repo",
+      "enabled": true
+    }
+  ]
+}

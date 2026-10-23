@@ -1,0 +1,16 @@
+{
+  "checks": [
+    "keyboard skip link focuses main",
+    "keyboard category selection enters genre directly",
+    "reduced motion disables transitions",
+    "not-ready genre location is persisted on server",
+    "decorative SVG icons are hidden from assistive technology"
+  ],
+  "contrast": {
+    "textOnWhite": 15.3,
+    "mutedOnWhite": 6.11,
+    "buttonWhiteOnAccent": 7.33,
+    "placeholderText": 5.65
+  },
+  "limits": "Chromium emulation and code review; no physical device or full assistive technology certification."
+}

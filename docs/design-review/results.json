@@ -1,0 +1,24 @@
+{
+  "passed": [
+    "real API: not_ready, no fabricated photos or responses, completion blocked",
+    "320/390/768/1440/1920px: no horizontal overflow; footer outside photo viewport",
+    "real API: category and genre-guide URL survive refresh",
+    "photo hearts independent of style response/location; repeated selected=true is idempotent",
+    "multiple liked styles; disliked style can retain a liked photo",
+    "save failure leaves previous response/location intact; retry succeeds",
+    "zoom/Escape returns focus and scroll; reload restores server state without localStorage",
+    "category changes isolate preferences and restore prior category responses/hearts",
+    "liked/disliked/skipped distinct; previous genre/edit preserves state; three image formats use contain",
+    "review uses real summary; completion idempotent; editing reopens server status",
+    "explicit skip of unanswered styles permits completion with zero liked styles/photos",
+    "partial skip failure stays on genre, retains successful writes and safely retries remaining responses",
+    "initial API failure shows recovery instead of demo data; reconnect restores real API",
+    "image failure preserves layout with retry, without a substitute image",
+    "invalid session is not silently reset; explicit recovery uses DELETE then POST"
+  ],
+  "pageErrors": [],
+  "limitations": [
+    "Actual fashion images are absent; garment texture fidelity cannot be confirmed.",
+    "Published-content interactions use an explicitly isolated fixture API, not production content."
+  ]
+}

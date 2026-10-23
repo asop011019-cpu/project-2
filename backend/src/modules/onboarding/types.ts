@@ -112,6 +112,25 @@ export interface ImagePreference {
   selected: boolean;
   updatedAt: string;
 }
+export type GenreVisitStatus = "unseen" | "viewed" | "skipped";
+export interface GenreVisit {
+  genreGroupId: string;
+  position: number;
+  status: GenreVisitStatus;
+  updatedAt: string | null;
+}
+export interface PhotoExploration {
+  currentGenreGroupId: string | null;
+  genres: GenreVisit[];
+}
+export interface PhotoExplorationView extends PhotoExploration {
+  progress: {
+    currentIndex: number | null;
+    completedCount: number;
+    totalCount: number;
+    canComplete: boolean;
+  };
+}
 export interface SessionView {
   id: string;
   selectedCategoryId: ClothingCategoryId | null;
@@ -127,6 +146,8 @@ export interface SessionView {
   activeStyleOrder: string[];
   styles: StyleSummary[];
   currentStyleId: string | null;
+  /** Null for existing style-response clients. Genre visits never imply preference. */
+  photoExploration: PhotoExplorationView | null;
   progress: {
     currentIndex: number | null;
     answeredCount: number;
@@ -156,6 +177,11 @@ export interface SessionSummary {
   skippedStyles: StyleSummary[];
   unansweredStyleIds: string[];
   likedImages: PublicStyleImage[];
+  selectedExamples: {
+    image: PublicStyleImage;
+    style: { id: string; name: string; genreGroupId: string };
+    genreGroup: { id: string; name: string };
+  }[];
   isExploringOnly: boolean;
 }
 export interface CatalogView {

@@ -15,6 +15,16 @@ export const responseBody = z
   .strict();
 export const preferenceBody = z.object({ selected: z.boolean() }).strict();
 export const positionBody = z.object({ styleId: idSchema.nullable() }).strict();
+export const genreParams = z.object({ genreGroupId: idSchema }).strict();
+export const genrePositionBody = z
+  .object({ genreGroupId: idSchema.nullable() })
+  .strict();
+export const genreProgressBody = z
+  .object({
+    status: z.enum(["viewed", "skipped"]),
+    nextGenreGroupId: idSchema.nullable().optional(),
+  })
+  .strict();
 export const emptyBody = z.object({}).strict();
 export const catalogQuery = z
   .object({ categoryId: categoryIdSchema.optional() })

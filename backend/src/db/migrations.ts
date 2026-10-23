@@ -69,6 +69,19 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
    CREATE INDEX sessions_expiry_idx ON onboarding_sessions(expires_at);
    CREATE INDEX style_images_style_idx ON style_images(style_id,position);`,
   migrateGenreClassification,
+  `CREATE TABLE IF NOT EXISTS photo_explorations (
+     session_id TEXT NOT NULL, category_id TEXT NOT NULL, current_genre_group_id TEXT,
+     PRIMARY KEY(session_id,category_id),
+     FOREIGN KEY(session_id,category_id) REFERENCES category_sessions(session_id,category_id) ON DELETE CASCADE,
+     FOREIGN KEY(current_genre_group_id,category_id) REFERENCES genre_groups(id,category_id)
+   ) STRICT;
+   CREATE TABLE IF NOT EXISTS session_genres (
+     session_id TEXT NOT NULL, category_id TEXT NOT NULL, genre_group_id TEXT NOT NULL,
+     position INTEGER NOT NULL, status TEXT NOT NULL CHECK(status IN ('unseen','viewed','skipped')), updated_at TEXT,
+     PRIMARY KEY(session_id,category_id,genre_group_id), UNIQUE(session_id,category_id,position),
+     FOREIGN KEY(session_id,category_id) REFERENCES photo_explorations(session_id,category_id) ON DELETE CASCADE,
+     FOREIGN KEY(genre_group_id,category_id) REFERENCES genre_groups(id,category_id)
+   ) STRICT;`,
 ];
 
 export function migrate(db: DatabaseSync): void {

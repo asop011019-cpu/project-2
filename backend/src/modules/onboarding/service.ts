@@ -6,6 +6,11 @@ import {
   explorableStyles,
 } from "./domain.ts";
 import type { OnboardingRepository } from "./ports.ts";
+import {
+  assertGenre,
+  assertPhotoCompletable,
+  photoProgress,
+} from "./genre-progress.ts";
 import type {
   CategorySession,
   ClothingCategoryId,
@@ -15,6 +20,7 @@ import type {
   SessionSummary,
   StyleDetail,
   CatalogView,
+  PhotoExploration,
 } from "./types.ts";
 
 const hashToken = (token: string) =>
@@ -278,16 +284,28 @@ export class OnboardingService {
         null;
       changed = true;
     }
+    const photo = this.repository.photoExploration(session.id, categoryId);
     if (
       category.status === "completed" &&
-      (!ids.length || answeredCount(ids, responses) !== ids.length)
+      (photo
+        ? !photoProgress(photo, ids.length > 0).progress.canComplete
+        : !ids.length || answeredCount(ids, responses) !== ids.length)
     ) {
       category.status = "in_progress";
       category.completedAt = null;
       changed = true;
     }
     if (changed) this.saveCategory(session, category, now);
-    return { categoryId, category, catalog, snapshot, styles, ids, responses };
+    return {
+      categoryId,
+      category,
+      catalog,
+      snapshot,
+      styles,
+      ids,
+      responses,
+      photo,
+    };
   }
   private view(session: SessionRecord): SessionView {
     if (!session.selectedCategoryId)
@@ -306,6 +324,7 @@ export class OnboardingService {
         activeStyleOrder: [],
         styles: [],
         currentStyleId: null,
+        photoExploration: null,
         progress: {
           currentIndex: null,
           answeredCount: 0,
@@ -320,8 +339,17 @@ export class OnboardingService {
         imagePreferences: [],
       };
     const context = this.context(session);
-    const { category, categoryId, catalog, snapshot, styles, ids, responses } =
-      context;
+    const {
+      category,
+      categoryId,
+      catalog,
+      snapshot,
+      styles,
+      ids,
+      responses,
+      photo,
+    } = context;
+    const photoView = photo ? photoProgress(photo, ids.length > 0) : null;
     const index = category.currentStyleId
       ? ids.indexOf(category.currentStyleId)
       : -1;
@@ -344,6 +372,7 @@ export class OnboardingService {
       activeStyleOrder: ids,
       styles: styles.map(summaryOf),
       currentStyleId: category.currentStyleId,
+      photoExploration: photoView,
       progress: {
         currentIndex: index < 0 ? null : index,
         answeredCount: answered,
@@ -351,7 +380,9 @@ export class OnboardingService {
         originalTotalCount: snapshot.length,
         withdrawnCount: snapshot.length - ids.length,
         allAnswered: ids.length > 0 && answered === ids.length,
-        canComplete: ids.length > 0 && answered === ids.length,
+        canComplete: photoView
+          ? photoView.progress.canComplete
+          : ids.length > 0 && answered === ids.length,
       },
       navigation: {
         previousStyleId: index > 0 ? ids[index - 1]! : null,
@@ -383,6 +414,89 @@ export class OnboardingService {
         "STYLE_NOT_IN_SESSION",
         "현재 범주의 탐색 목록에 없는 스타일이에요.",
       );
+  }
+  startPhotoExploration(token: string | undefined): SessionView {
+    return this.withSession(token, (session) => {
+      const { category, categoryId, catalog, photo } = this.context(session);
+      if (photo) return this.view(session);
+      const groups = catalog.genreGroups
+        .filter((group) => group.categoryId === categoryId)
+        .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+      this.repository.savePhotoExploration(session.id, categoryId, {
+        currentGenreGroupId: groups[0]?.id ?? null,
+        genres: groups.map((group, position) => ({
+          genreGroupId: group.id,
+          position,
+          status: "unseen",
+          updatedAt: null,
+        })),
+      });
+      category.status = "in_progress";
+      category.completedAt = null;
+      this.saveCategory(session, category, this.now().toISOString());
+      return this.view(session);
+    });
+  }
+  private requirePhoto(photo: PhotoExploration | undefined): PhotoExploration {
+    if (!photo)
+      throw new DomainError(
+        409,
+        "PHOTO_EXPLORATION_REQUIRED",
+        "먼저 사진 탐색을 시작해 주세요.",
+      );
+    return photo;
+  }
+  genrePosition(
+    token: string | undefined,
+    genreGroupId: string | null,
+  ): SessionView {
+    return this.withSession(token, (session) => {
+      const { category, categoryId, photo: existing } = this.context(session);
+      const photo = this.requirePhoto(existing);
+      if (genreGroupId !== null) assertGenre(photo, genreGroupId);
+      if (photo.currentGenreGroupId !== genreGroupId) {
+        photo.currentGenreGroupId = genreGroupId;
+        this.repository.savePhotoExploration(session.id, categoryId, photo);
+        this.saveCategory(session, category, this.now().toISOString());
+      }
+      return this.view(session);
+    });
+  }
+  visitGenre(
+    token: string | undefined,
+    genreGroupId: string,
+    status: "viewed" | "skipped",
+    nextGenreGroupId?: string | null,
+  ): SessionView {
+    return this.withSession(token, (session) => {
+      const { category, categoryId, photo: existing } = this.context(session);
+      const photo = this.requirePhoto(existing);
+      assertGenre(photo, genreGroupId);
+      if (nextGenreGroupId !== undefined && nextGenreGroupId !== null)
+        assertGenre(photo, nextGenreGroupId);
+      const visit = photo.genres.find(
+        (genre) => genre.genreGroupId === genreGroupId,
+      )!;
+      const changed = visit.status !== status;
+      if (
+        changed ||
+        (nextGenreGroupId !== undefined &&
+          nextGenreGroupId !== photo.currentGenreGroupId)
+      ) {
+        const now = this.now().toISOString();
+        if (changed) {
+          visit.status = status;
+          visit.updatedAt = now;
+          category.status = "in_progress";
+          category.completedAt = null;
+        }
+        if (nextGenreGroupId !== undefined)
+          photo.currentGenreGroupId = nextGenreGroupId;
+        this.repository.savePhotoExploration(session.id, categoryId, photo);
+        this.saveCategory(session, category, now);
+      }
+      return this.view(session);
+    });
   }
   respond(
     token: string | undefined,
@@ -499,19 +613,41 @@ export class OnboardingService {
         likedImages: styles
           .flatMap((style) => style.images)
           .filter((image) => imageIds.has(image.id)),
+        selectedExamples: styles.flatMap((style) => {
+          const genre = this.repository
+            .catalog()
+            .genreGroups.find((group) => group.id === style.genreGroupId)!;
+          return style.images
+            .filter((image) => imageIds.has(image.id))
+            .map((image) => ({
+              image,
+              style: {
+                id: style.id,
+                name: style.name,
+                genreGroupId: style.genreGroupId,
+              },
+              genreGroup: { id: genre.id, name: genre.name },
+            }));
+        }),
         isExploringOnly: liked.size === 0,
       };
     });
   }
   complete(token: string | undefined): SessionView {
     return this.withSession(token, (session) => {
-      const { category, ids, responses } = this.context(session);
-      assertCompletable(ids.length, answeredCount(ids, responses));
+      const { category, categoryId, ids, responses, photo } =
+        this.context(session);
+      if (photo) assertPhotoCompletable(photo, ids.length > 0);
+      else assertCompletable(ids.length, answeredCount(ids, responses));
       if (category.status !== "completed") {
         const now = this.now().toISOString();
         category.status = "completed";
         category.completedAt = now;
         category.currentStyleId = null;
+        if (photo) {
+          photo.currentGenreGroupId = null;
+          this.repository.savePhotoExploration(session.id, categoryId, photo);
+        }
         this.saveCategory(session, category, now);
       }
       return this.view(session);
@@ -525,6 +661,7 @@ export class OnboardingService {
         catalog,
         ids: oldIds,
         responses,
+        photo,
       } = this.context(session);
       const ids = explorableStyles(catalog)
         .filter((style) => style.categoryId === categoryId)
@@ -541,7 +678,45 @@ export class OnboardingService {
         !ids.includes(category.currentStyleId)
       )
         category.currentStyleId = null;
-      if (!ids.length || answeredCount(ids, responses) !== ids.length) {
+      if (photo) {
+        // Only explicit refresh changes the genre snapshot; retain visits by stable ID.
+        const groups = catalog.genreGroups
+          .filter((group) => group.categoryId === categoryId)
+          .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+        const newlyAvailable = ids.some((id) => !oldIds.includes(id));
+        photo.genres = groups.map((group, position) => ({
+          genreGroupId: group.id,
+          position,
+          status:
+            newlyAvailable &&
+            catalog.styles.some(
+              (style) =>
+                style.genreGroupId === group.id &&
+                ids.includes(style.id) &&
+                !oldIds.includes(style.id),
+            )
+              ? "unseen"
+              : (photo.genres.find((visit) => visit.genreGroupId === group.id)
+                  ?.status ?? "unseen"),
+          updatedAt:
+            photo.genres.find((visit) => visit.genreGroupId === group.id)
+              ?.updatedAt ?? null,
+        }));
+        if (
+          !photo.genres.some(
+            (visit) => visit.genreGroupId === photo.currentGenreGroupId,
+          )
+        )
+          photo.currentGenreGroupId =
+            photo.genres.find((visit) => visit.status === "unseen")
+              ?.genreGroupId ?? null;
+        this.repository.savePhotoExploration(session.id, categoryId, photo);
+      }
+      if (
+        photo
+          ? !photoProgress(photo, ids.length > 0).progress.canComplete
+          : !ids.length || answeredCount(ids, responses) !== ids.length
+      ) {
         category.status = "in_progress";
         category.completedAt = null;
         category.currentStyleId =

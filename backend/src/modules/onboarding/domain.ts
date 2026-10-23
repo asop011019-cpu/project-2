@@ -6,7 +6,8 @@ import type {
   StyleDetail,
   StyleResponse,
 } from "./types.ts";
-export const MIN_STYLE_IMAGES = 4;
+// Aim for 4–6 examples; an approved partial set is still usable and never padded.
+export const MIN_STYLE_IMAGES = 1;
 export const MAX_STYLE_IMAGES = 6;
 export class DomainError extends Error {
   readonly status: number;

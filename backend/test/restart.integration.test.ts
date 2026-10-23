@@ -138,13 +138,33 @@ test(
     );
     assert.equal(saved.status, 200);
     const before = await saved.json();
+    await fetch(`${origin}/api/onboarding/session/photo-exploration`, {
+      method: "POST",
+      headers: authenticated,
+      body: "{}",
+    });
+    const visited = await fetch(
+      `${origin}/api/onboarding/session/genres/men_formal_group/progress`,
+      {
+        method: "PUT",
+        headers: authenticated,
+        body: JSON.stringify({
+          status: "viewed",
+          nextGenreGroupId: "men_casual_group",
+        }),
+      },
+    );
+    assert.equal(visited.status, 200);
+    const photoBefore = await visited.json();
     await stop(child!);
     await start();
     const restored = await fetch(`${origin}/api/onboarding/session`, {
       headers: { cookie },
     });
     assert.equal(restored.status, 200);
-    assert.deepEqual(await restored.json(), before);
+    const restoredState = await restored.json();
+    assert.deepEqual(restoredState, photoBefore);
+    assert.deepEqual(restoredState.responses, before.responses);
     assert.equal((await fetch(`${origin}/api/onboarding/session`)).status, 401);
   },
 );

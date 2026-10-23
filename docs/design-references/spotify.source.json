@@ -1,0 +1,14 @@
+{
+  "sourceUrl": "https://getdesign.md/spotify/design-md",
+  "sourceRepository": "https://github.com/VoltAgent/awesome-design-md",
+  "package": "getdesign",
+  "version": "0.6.26",
+  "command": "npx getdesign@latest add spotify --out docs/design-references/spotify.DESIGN.md",
+  "sha256": "72e964a6cf551d0603f9854f2f42ee08e97ad4d9e17e037f50f6233508288295",
+  "existingDesignMd": false,
+  "forceUsed": false,
+  "downloadedOn": "2026-10-23",
+  "webPageStatus": "HTTP 403 including escalated retry; official publisher npm package template used",
+  "license": "MIT declared by getdesign package; third-party inspiration, not an official Spotify design system",
+  "cliReadme": "getdesign.README.md"
+}

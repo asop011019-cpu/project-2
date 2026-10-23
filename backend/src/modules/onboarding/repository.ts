@@ -8,6 +8,7 @@ import type {
   SnapshotStyle,
   StyleResponse,
   ImagePreference,
+  PhotoExploration,
 } from "./types.ts";
 
 export class SqliteOnboardingRepository implements OnboardingRepository {
@@ -216,6 +217,54 @@ export class SqliteOnboardingRepository implements OnboardingRepository {
         p.imageId,
         Number(p.selected),
         p.updatedAt,
+      );
+  }
+  photoExploration(
+    id: string,
+    category: ClothingCategoryId,
+  ): PhotoExploration | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT current_genre_group_id AS currentGenreGroupId FROM photo_explorations WHERE session_id=? AND category_id=?",
+      )
+      .get(id, category);
+    if (!row) return undefined;
+    return {
+      currentGenreGroupId: row["currentGenreGroupId"] as string | null,
+      genres: this.db
+        .prepare(
+          "SELECT genre_group_id AS genreGroupId,position,status,updated_at AS updatedAt FROM session_genres WHERE session_id=? AND category_id=? ORDER BY position",
+        )
+        .all(id, category) as unknown as PhotoExploration["genres"],
+    };
+  }
+  savePhotoExploration(
+    id: string,
+    category: ClothingCategoryId,
+    value: PhotoExploration,
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO photo_explorations VALUES(?,?,?) ON CONFLICT(session_id,category_id)
+       DO UPDATE SET current_genre_group_id=excluded.current_genre_group_id`,
+      )
+      .run(id, category, value.currentGenreGroupId);
+    this.db
+      .prepare(
+        "DELETE FROM session_genres WHERE session_id=? AND category_id=?",
+      )
+      .run(id, category);
+    const insert = this.db.prepare(
+      "INSERT INTO session_genres VALUES(?,?,?,?,?,?)",
+    );
+    for (const visit of value.genres)
+      insert.run(
+        id,
+        category,
+        visit.genreGroupId,
+        visit.position,
+        visit.status,
+        visit.updatedAt,
       );
   }
 }

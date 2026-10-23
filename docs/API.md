@@ -17,6 +17,9 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 | POST | `/session` | `{}` | 신규 201 / 유효 쿠키 재호출 200, `SessionView` |
 | GET | `/session` | 없음 | 쿠키로 복원한 `SessionView` |
 | PUT | `/session/category` | `{ "categoryId": "menswear" }` | 해당 범주의 상태를 적용한 `SessionView` |
+| POST | `/session/photo-exploration` | `{}` | 범주별 사진 탐색 시작/복원, `SessionView` |
+| PUT | `/session/genre-position` | `{ "genreGroupId": "men_formal_group" }` 또는 null | 장르 위치만 저장, `SessionView` |
+| PUT | `/session/genres/:genreGroupId/progress` | `{ "status": "viewed", "nextGenreGroupId": "men_casual_group" }` | 살펴봄/건너뜀과 위치를 원자적으로 저장, `SessionView` |
 | PUT | `/session/styles/:styleId/response` | `response` 및 선택적 `nextStyleId` | 응답과 이동을 함께 저장한 `SessionView` |
 | PUT | `/session/styles/:styleId/images/:imageId/preference` | `{ "selected": true }` 또는 false | 위치를 유지한 `SessionView` |
 | PUT | `/session/position` | `{ "styleId": "men_casual" }` 또는 null | 위치만 바꾼 `SessionView` |
@@ -40,7 +43,7 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 - `availableStyleCount`, `contentStatus`: 실제 게시 조건을 만족한 스타일 수와 ready/not_ready.
 - `representativeImage`: 게시 조건을 만족한 실제 이미지 메타데이터 또는 null. 준비 중인 사진이나 URL을 생성하지 않습니다.
 
-분류 안내는 탐색 목록과 구별됩니다. 실제 탐색에는 세션의 `activeStyleOrder`만 사용합니다. 스타일의 `order`는 장르 내 분류 순서, `explorationOrder`는 기존 탐색 순서 보존용 서버 정렬값입니다. 장르 개편만으로 탐색 순서를 바꾸지 않습니다. 상위 장르 선택·복수 선택·세션 반영 API는 이번 단계에 추가하지 않았습니다. [분류표와 ID 보존](GENRE_CLASSIFICATION.md)을 참고하세요.
+분류 안내는 탐색 목록과 구별됩니다. 실제 이미지 탐색에는 세션의 `activeStyleOrder`만 사용합니다. 스타일의 `order`는 장르 내 분류 순서, `explorationOrder`는 기존 탐색 순서 보존용 서버 정렬값입니다. 사진 탐색의 장르 순서는 `photoExploration.genres`로 별도 고정합니다. 상위 장르 선호·복수 선택 필터링 API는 없습니다. [분류표와 ID 보존](GENRE_CLASSIFICATION.md)을 참고하세요.
 
 `StyleDetail`은 스타일 ID·범주 ID·상위 장르 ID·이름·설명·순서·게시 상태·`imageCount`와 `images`를 반환합니다. 이미지별 핵심 필드는 다음과 같습니다.
 
@@ -69,6 +72,7 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 - `activeStyleOrder`: 세션에서 실제 탐색할 ID 순서. 순번이 아닌 이 ID로 저장합니다.
 - `styles`: 고정 순서에 대응하는 공개 요약 목록. UI 고정 배열 대신 사용하며 `activeStyleOrder`가 순서의 기준입니다. 개별 style.order는 현재 카탈로그 메타데이터이므로 기존 세션 배열을 그 값으로 다시 정렬하지 않습니다.
 - `currentStyleId`: 현재 스타일 ID, 결과 화면/준비 중이면 null.
+- `photoExploration`: 사진 중심 탐색의 장르별 위치·기록·진행률. 아래 계약 참고. 이 모드에서는 currentStyleId로 화면 위치를 판단하지 않습니다.
 - `progress.currentIndex`: 활성 목록 내 0부터 시작하는 위치, 위치가 없으면 null. 표시할 때만 +1 합니다.
 - `progress.answeredCount`, `totalCount`: 명시적 응답 수와 현재 탐색 대상 수.
 - `progress.originalTotalCount`, `withdrawnCount`: 원래 고정 목록 수와 게시 철회 수.
@@ -80,6 +84,37 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 `SessionSummary`는 `session`, `likedStyles`, `dislikedStyles`, `skippedStyles`, `unansweredStyleIds`, `likedImages`, `isExploringOnly`를 반환합니다. 다른 범주의 응답이나 철회된 자료를 섞지 않습니다. `isExploringOnly`는 좋아한 스타일이 없다는 뜻이며 사진 좋아요 여부와 별개입니다.
 
 ## 요청 예시
+
+### 사진 중심 장르 탐색 (현재 UI)
+
+기존 스타일 응답 클라이언트와 구분하기 위해 범주 저장 뒤 `POST /session/photo-exploration {}`를 호출합니다. 최초 한 번 범주의 모든 상위 장르 ID·순서를 고정하고, 재호출은 기존 기록을 그대로 반환합니다. 사진이 없는 장르도 분류 안내는 가능하지만 실제 이미지를 생성하지 않습니다. 범주마다 독립 저장하며 예전 스타일 응답·하트를 변환하거나 삭제하지 않습니다.
+
+`SessionView.photoExploration`은 이전 클라이언트에서는 null이고, 시작 후 아래 구조입니다.
+
+```ts
+{
+  currentGenreGroupId: "men_formal_group", // null: 선택 확인 화면
+  genres: [
+    { genreGroupId: "men_formal_group", position: 0, status: "unseen", updatedAt: null },
+    // 나머지는 서버가 제공. status: unseen | viewed | skipped
+  ],
+  progress: { currentIndex: 0, completedCount: 0, totalCount: 5, canComplete: false }
+}
+```
+
+- 상단 단계는 genres의 현재 장르 위치+1 / totalCount, 전체 탐색 진도는 completedCount입니다. unseen은 아직 안 봄, viewed는 살펴봄, skipped는 명시적 건너뜀입니다. 어느 값도 스타일 선호를 뜻하지 않습니다.
+- 다음: `PUT /session/genres/서버장르ID/progress {status:"viewed",nextGenreGroupId:다음ID}`. 건너뛰기: status만 `"skipped"`. 마지막은 nextGenreGroupId=null. 생략하면 현재 위치 유지. 검증·기록·이동은 하나의 트랜잭션입니다.
+- 이전/수정: `PUT /session/genre-position {genreGroupId:대상ID}`. 선호나 탐색 완료 기록을 바꾸지 않습니다. null은 결과 확인입니다.
+- 하트: 기존 preference API만 사용합니다. 사진을 고르거나 해제해도 스타일 response는 계속 미응답일 수 있습니다. 장르를 건너뛰어도 기존 하트를 지우지 않습니다.
+- 완료: 모든 장르가 viewed/skipped이고 활성 이미지 콘텐츠가 하나 이상이면 가능하며 **하트 0개도 가능**합니다. 콘텐츠가 전혀 없으면 not_ready/완료 불가입니다. UI는 photoExploration.progress.canComplete를 사용합니다. 공통 progress.canComplete도 같은 값을 반환하고, answeredCount/allAnswered는 기존 명시적 스타일 응답 통계 그대로입니다.
+- 완료 후 실제 사진 선호/장르 기록 변경은 진행 중으로 열고 completedAt=null로 만듭니다. 이동만 하거나 같은 값 재저장은 완료를 유지합니다.
+- 운영 중 순서 변경을 자동 반영하지 않습니다. 명시적 refresh-catalog에서 최신 장르/스타일 목록을 받고 기록을 ID로 보존합니다. 새 콘텐츠가 추가된 장르는 unseen으로 돌려 다시 살펴보게 합니다. 게시 철회 콘텐츠는 조회 즉시 제외하며, 전체 콘텐츠가 사라지면 완료도 해제합니다.
+- summary의 `selectedExamples`는 `{image:PublicStyleImage,style:{id,name,genreGroupId},genreGroup:{id,name}}[]`입니다. 화면·확대에서 사진과 분류 이름을 연결합니다. 기존 likedStyles 등은 호환용이며 사진 하트로 계산하지 않습니다.
+- 게시 스타일에 승인된 실제 이미지가 1장 이상이면 그 사진만 공개합니다(목표 4–6장, 최대 6장). 부족분은 채우지 않습니다.
+
+### 기존 스타일 응답 클라이언트
+
+아래는 호환용 계약입니다. 현재 사진 중심 UI는 response/position API를 호출하지 않습니다.
 
 응답 저장만 하고 위치를 유지합니다.
 
@@ -161,8 +196,9 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 | 409 | CATEGORY_REQUIRED | 의류 범주 선택으로 안내 |
 | 409 | CONTENT_NOT_READY | 콘텐츠 준비 중, 완료 버튼 비활성화 |
 | 409 | RESPONSES_REQUIRED | 미응답 확인·수정 또는 명시적 건너뛰기 |
+| 409 | PHOTO_EXPLORATION_REQUIRED / GENRE_VISITS_REQUIRED | 사진 탐색 시작 / 아직 살펴보지 않은 장르 확인 |
 | 413 / 415 | PAYLOAD_TOO_LARGE / UNSUPPORTED_MEDIA_TYPE | JSON 형식·16 KiB 본문 한도 확인 |
-| 422 | CATEGORY_UNAVAILABLE / STYLE_NOT_IN_SESSION / IMAGE_NOT_IN_STYLE | 선택 범주의 최신 상태 재조회, 임의 보정 금지 |
+| 422 | CATEGORY_UNAVAILABLE / STYLE_NOT_IN_SESSION / IMAGE_NOT_IN_STYLE / GENRE_NOT_IN_SESSION | 선택 범주의 최신 상태 재조회, 임의 보정 금지 |
 | 500 | INTERNAL_ERROR | 저장 실패 안내·재시도. 성공 표시나 데모 대체 금지 |
 
 공개 응답에는 SQL·파일 경로·쿠키·스택을 넣지 않습니다. 실패한 응답은 화면의 저장 성공 상태로 적용하지 않습니다.

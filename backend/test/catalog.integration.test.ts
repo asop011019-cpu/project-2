@@ -95,7 +95,7 @@ test("withdrawal removes public content and recalculates counts without inventin
   assert.equal(refreshed.imagePreferences.length, 1);
 });
 
-test("an image rights withdrawal below four eligible images prevents false completion", async (t) => {
+test("partial approved sets remain usable, but withdrawing every image prevents false completion", async (t) => {
   const c = await context();
   t.after(c.cleanup);
   await publish(c, ["men_casual"]);
@@ -111,6 +111,12 @@ test("an image rights withdrawal below four eligible images prevents false compl
   );
   const image = c.repository.catalog().images[0]!;
   importCatalog(c.db, { images: [{ ...image, usageStatus: "revoked" }] });
+  assert.equal((await user.request("GET", base)).json().contentStatus, "ready");
+  importCatalog(c.db, {
+    images: c.repository
+      .catalog()
+      .images.map((row) => ({ ...row, usageStatus: "revoked" as const })),
+  });
   const state = (await user.request("GET", base)).json();
   assert.equal(state.contentStatus, "not_ready");
   assert.equal(state.progress.totalCount, 0);
@@ -208,10 +214,14 @@ test("eligibility caps each style at six and excludes pending or draft images", 
         : { usageStatus: "pending" }),
     })),
   });
-  assert.equal(
-    (await visitor.request("GET", "/api/onboarding/styles/men_casual"))
-      .statusCode,
-    404,
+  detail = (
+    await visitor.request("GET", "/api/onboarding/styles/men_casual")
+  ).json();
+  assert.equal(detail.images.length, 3);
+  assert.ok(
+    detail.images.every((image: { id: string }) =>
+      images.slice(4).some((row) => row.id === image.id),
+    ),
   );
 });
 

@@ -10,6 +10,9 @@ import {
   emptyBody,
   styleParams,
   imageParams,
+  genreParams,
+  genrePositionBody,
+  genreProgressBody,
 } from "./validation.ts";
 
 export function registerOnboardingRoutes(
@@ -85,6 +88,26 @@ export function registerOnboardingRoutes(
   app.put(`${prefix}/session/position`, (request) =>
     service.position(token(request), positionBody.parse(request.body).styleId),
   );
+  app.post(`${prefix}/session/photo-exploration`, (request) => {
+    emptyBody.parse(request.body ?? {});
+    return service.startPhotoExploration(token(request));
+  });
+  app.put(`${prefix}/session/genre-position`, (request) =>
+    service.genrePosition(
+      token(request),
+      genrePositionBody.parse(request.body).genreGroupId,
+    ),
+  );
+  app.put(`${prefix}/session/genres/:genreGroupId/progress`, (request) => {
+    const { genreGroupId } = genreParams.parse(request.params);
+    const body = genreProgressBody.parse(request.body);
+    return service.visitGenre(
+      token(request),
+      genreGroupId,
+      body.status,
+      body.nextGenreGroupId,
+    );
+  });
   app.get(`${prefix}/session/summary`, (request) => {
     emptyBody.parse(request.query);
     return service.summary(token(request));

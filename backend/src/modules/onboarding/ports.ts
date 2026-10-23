@@ -6,6 +6,7 @@ import type {
   SnapshotStyle,
   StyleResponse,
   ImagePreference,
+  PhotoExploration,
 } from "./types.ts";
 export interface OnboardingRepository {
   transaction<T>(operation: () => T): T;
@@ -37,4 +38,13 @@ export interface OnboardingRepository {
   saveResponse(response: StyleResponse): void;
   preferences(id: string, categoryId: ClothingCategoryId): ImagePreference[];
   savePreference(preference: ImagePreference): void;
+  photoExploration(
+    id: string,
+    categoryId: ClothingCategoryId,
+  ): PhotoExploration | undefined;
+  savePhotoExploration(
+    id: string,
+    categoryId: ClothingCategoryId,
+    value: PhotoExploration,
+  ): void;
 }
