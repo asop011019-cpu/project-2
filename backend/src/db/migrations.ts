@@ -69,6 +69,7 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
    CREATE INDEX sessions_expiry_idx ON onboarding_sessions(expires_at);
    CREATE INDEX style_images_style_idx ON style_images(style_id,position);`,
   migrateGenreClassification,
+  `CREATE TABLE garments (session_id TEXT PRIMARY KEY REFERENCES onboarding_sessions(id) ON DELETE CASCADE, id TEXT NOT NULL, garment_type TEXT NOT NULL CHECK(garment_type IN ('pants','skirt')), brand TEXT, product_name TEXT, purchase_url TEXT, filename TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;`,
 ];
 
 export function migrate(db: DatabaseSync): void {

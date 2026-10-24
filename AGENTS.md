@@ -1,7 +1,7 @@
 # project-2 collaboration
 
 - This is a new project. Do not import or rebuild the old `project` app.
-- Backend changes belong in `backend/`; Gemini owns frontend screens and design.
+- Backend changes belong in `backend/`; GPT owns product priorities; Lovable owns frontend screens and design; Codex owns backend and integration.
 - Read `docs/API.md`, `docs/DATA.md`, and `docs/GEMINI_HANDOFF.md` before changing API contracts.
 - Domain rules do not depend on Fastify, SQLite, browser state, or UI.
 - No AI garment analysis, catalog shopping, recommendations, or wardrobe implementation in this stage.

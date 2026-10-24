@@ -6,7 +6,7 @@ import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { buildApp } from "../src/app.ts";
-import { context, client, publish } from "./helpers.ts";
+import { context, client, publish, fixturePng } from "./helpers.ts";
 
 async function freePort(): Promise<number> {
   const server = createServer();
@@ -138,11 +138,46 @@ test(
     );
     assert.equal(saved.status, 200);
     const before = await saved.json();
+    const form = new FormData();
+    form.set(
+      "metadata",
+      JSON.stringify({
+        garmentType: "pants",
+        brand: null,
+        productName: null,
+        purchaseUrl: null,
+      }),
+    );
+    form.set(
+      "image",
+      new Blob([new Uint8Array(fixturePng(9))], { type: "image/png" }),
+      "fixture.png",
+    );
+    const garment = await fetch(`${origin}/api/onboarding/session/garment`, {
+      method: "PUT",
+      headers: { cookie, "x-onboarding-request": "1", origin },
+      body: form,
+    });
+    assert.equal(garment.status, 200);
+    const garmentBefore = await garment.json();
     await stop(child!);
     await start();
     const restored = await fetch(`${origin}/api/onboarding/session`, {
       headers: { cookie },
     });
+    const garmentAfter = await fetch(
+      `${origin}/api/onboarding/session/garment`,
+      { headers: { cookie } },
+    );
+    assert.deepEqual(await garmentAfter.json(), garmentBefore);
+    assert.equal(
+      (
+        await fetch(`${origin}/api/onboarding/session/garment/image`, {
+          headers: { cookie },
+        })
+      ).status,
+      200,
+    );
     assert.equal(restored.status, 200);
     assert.deepEqual(await restored.json(), before);
     assert.equal((await fetch(`${origin}/api/onboarding/session`)).status, 401);
