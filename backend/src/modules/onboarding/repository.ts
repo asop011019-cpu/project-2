@@ -1,3 +1,4 @@
+import { garmentFiles } from "../garment/files.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { OnboardingRepository } from "./ports.ts";
 import type {
@@ -12,17 +13,24 @@ import type {
 
 export class SqliteOnboardingRepository implements OnboardingRepository {
   readonly db: DatabaseSync;
-  constructor(db: DatabaseSync) {
+  private undos: (() => void)[] = [];
+  readonly garmentRoot: string | undefined;
+  constructor(db: DatabaseSync, garmentRoot?: string) {
+    this.garmentRoot = garmentRoot;
     this.db = db;
   }
   transaction<T>(operation: () => T): T {
+    this.undos = [];
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const result = operation();
       this.db.exec("COMMIT");
+      this.undos = [];
       return result;
     } catch (error) {
       this.db.exec("ROLLBACK");
+      for (const undo of this.undos) undo();
+      this.undos = [];
       throw error;
     }
   }
@@ -83,6 +91,16 @@ export class SqliteOnboardingRepository implements OnboardingRepository {
       );
   }
   deleteSession(id: string): void {
+    const row = this.db
+      .prepare("SELECT filename FROM garments WHERE session_id=?")
+      .get(id);
+    if (row) {
+      if (!this.garmentRoot)
+        throw new Error("Garment storage is not configured");
+      this.undos.push(
+        garmentFiles(this.garmentRoot).remove(String(row.filename)),
+      );
+    }
     this.db.prepare("DELETE FROM onboarding_sessions WHERE id=?").run(id);
   }
   selectCategory(id: string, category: ClothingCategoryId, now: string): void {

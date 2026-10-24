@@ -141,7 +141,7 @@ async function legacyDatabase() {
   migrate(db);
   // Schema v2 only adds this column: reverse it in this isolated fixture to restore exact v1 DDL.
   db.exec(
-    "ALTER TABLE styles DROP COLUMN exploration_order; PRAGMA user_version=1;",
+    "DROP TABLE garments; ALTER TABLE styles DROP COLUMN exploration_order; PRAGMA user_version=1;",
   );
   const fixture = JSON.parse(
     await readFile(

@@ -5,6 +5,7 @@ export interface AppConfig {
   port: number;
   databasePath: string;
   assetRoot: string;
+  garmentRoot?: string;
   publicOrigin: string;
   secureCookies: boolean;
   sessionTtlSeconds: number;
@@ -34,6 +35,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .max(65535)
       .parse(env.PORT ?? 3001),
     databasePath: path.resolve(env.DATABASE_PATH ?? "./data/onboarding.sqlite"),
+    garmentRoot: path.resolve(
+      env.GARMENT_ROOT ??
+        path.join(
+          path.dirname(env.DATABASE_PATH ?? "./data/onboarding.sqlite"),
+          "garments",
+        ),
+    ),
     assetRoot: path.resolve(env.ASSET_ROOT ?? "./assets"),
     publicOrigin: origin.origin,
     secureCookies: production || origin.protocol === "https:",

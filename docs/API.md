@@ -166,3 +166,5 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 | 500 | INTERNAL_ERROR | 저장 실패 안내·재시도. 성공 표시나 데모 대체 금지 |
 
 공개 응답에는 SQL·파일 경로·쿠키·스택을 넣지 않습니다. 실패한 응답은 화면의 저장 성공 상태로 적용하지 않습니다.
+
+기준 하의 등록·복원 계약: [GARMENT_API.md](GARMENT_API.md).

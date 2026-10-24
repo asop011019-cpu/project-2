@@ -1,3 +1,4 @@
+import { registerGarmentRoutes } from "./modules/garment/routes.ts";
 import Fastify, { LogController } from "fastify";
 import cookie from "@fastify/cookie";
 import { ZodError } from "zod";
@@ -26,7 +27,11 @@ export function buildApp(
     db.close();
     throw error;
   }
-  const repository = new SqliteOnboardingRepository(db);
+  const repository = new SqliteOnboardingRepository(
+    db,
+    config.garmentRoot ??
+      path.join(path.dirname(config.databasePath), "garments"),
+  );
   const service = new OnboardingService(
     repository,
     config.sessionTtlSeconds,
@@ -132,6 +137,7 @@ export function buildApp(
   );
   app.get("/health", () => ({ status: "ok" }));
   registerOnboardingRoutes(app, service, config);
+  registerGarmentRoutes(app, db, service, config);
   // A local image URL stays readable only while it belongs to currently public content.
   app.get("/media/*", async (request, reply) => {
     const reference = `/media/${(request.params as { "*": string })["*"]}`;

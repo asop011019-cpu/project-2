@@ -120,7 +120,7 @@ export class OnboardingService {
       },
     };
   }
-  private authenticated(token: string | undefined): SessionRecord {
+  authenticated(token: string | undefined): SessionRecord {
     if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token))
       throw new DomainError(
         401,
