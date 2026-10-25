@@ -1,17 +1,19 @@
 import { createPortal } from "react-dom";
-import { Shirt } from "lucide-react";
+import { Heart, Shirt } from "lucide-react";
 import type { SessionView } from "@/lib/onboarding-session-api";
 export function PreferenceRail({
   session,
   message,
   failed,
+  currentStyleId = null,
 }: {
   session: SessionView | null;
   message: string | null;
   failed: boolean;
+  currentStyleId?: string | null;
 }) {
   const liked = session?.responses.filter((r) => r.response === "liked") ?? [];
-  const count = liked.length;
+  const isLiked = currentStyleId !== null && liked.some((r) => r.styleId === currentStyleId);
   return (
     <header className="preference-rail">
       {createPortal(
@@ -25,22 +27,17 @@ export function PreferenceRail({
         document.body,
       )}
       <div className="rail-content">
-        <div>
-          <div className="rolling-count" aria-label={`좋아요 ${count}개`}>
-            {[Math.floor(count / 10), count % 10].map((n, i) => (
-              <div
-                className="digit-column"
-                key={i}
-                style={{ transform: `translateY(-${n * 34}px)` }}
-                aria-hidden="true"
-              >
-                {Array.from({ length: 10 }, (_, d) => (
-                  <span key={d}>{d}</span>
-                ))}
-              </div>
-            ))}
-          </div>
-          <span className="text-xs text-muted-foreground">좋아요</span>
+        <div
+          className={`like-status ${isLiked ? "like-status-on" : ""}`}
+          role="status"
+          data-testid="like-status"
+          data-liked={isLiked}
+        >
+          <Heart size={26} aria-hidden="true" />
+          <span className="text-xs text-muted-foreground" aria-hidden="true">
+            좋아요
+          </span>
+          <span className="sr-only">{isLiked ? "좋아요한 스타일" : "아직 좋아요 안 함"}</span>
         </div>
         <ul className="hanger-rail" aria-label="좋아요한 스타일">
           {liked.slice(-8).map((r) => (

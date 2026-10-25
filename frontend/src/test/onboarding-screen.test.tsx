@@ -423,3 +423,80 @@ describe("라우팅", () => {
     expect(router.matchRoutes("/garment").at(-1)?.routeId).toBe("/garment");
   });
 });
+
+describe("ONB-003", () => {
+  const liked = (id: string) =>
+    session({ responses: [{ styleId: id, response: "liked", updatedAt: "" }] });
+
+  it("더블탭: putStyleResponse(styleId,'liked') nextStyleId 미전달, 위치 유지", async () => {
+    setupOnline(session());
+    api.putStyleResponse.mockResolvedValue(liked("a"));
+    renderScreen();
+    await screen.findByRole("heading", { name: "스타일A" });
+    await userEvent.dblClick(screen.getByTestId("style-card-photo"));
+    await waitFor(() => expect(api.putStyleResponse).toHaveBeenCalledTimes(1));
+    expect(api.putStyleResponse.mock.calls[0]).toEqual(["a", "liked", undefined]);
+    expect(await screen.findByText("좋아요한 스타일")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "스타일A" })).toBeInTheDocument();
+  });
+
+  it("단일 탭은 호출 없음", async () => {
+    setupOnline(session());
+    renderScreen();
+    await screen.findByRole("heading", { name: "스타일A" });
+    await userEvent.click(screen.getByTestId("style-card-photo"));
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+  });
+
+  it("이미 liked면 더블탭 미호출", async () => {
+    setupOnline(liked("a"));
+    renderScreen();
+    await screen.findByRole("heading", { name: "스타일A" });
+    await userEvent.dblClick(screen.getByTestId("style-card-photo"));
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+  });
+
+  it("더블탭 실패 시 상태 복원·알림", async () => {
+    setupOnline(session());
+    api.putStyleResponse.mockRejectedValue(new ApiError({ status: 500, code: "X", message: "" }));
+    renderScreen();
+    await screen.findByRole("heading", { name: "스타일A" });
+    await userEvent.dblClick(screen.getByTestId("style-card-photo"));
+    expect(await screen.findByText("저장에 실패했어요. 다시 시도해 주세요.")).toBeInTheDocument();
+    expect(screen.getByTestId("like-status")).toHaveAttribute("data-liked", "false");
+    expect(screen.getByText("아직 좋아요 안 함")).toBeInTheDocument();
+    expect(screen.queryByTestId("tap-heart")).not.toBeInTheDocument();
+  });
+
+  it("상단 하트는 현재 스타일 liked 상태 반영", async () => {
+    setupOnline(liked("a"));
+    renderScreen();
+    await screen.findByRole("heading", { name: "스타일A" });
+    expect(screen.getByTestId("like-status")).toHaveAttribute("data-liked", "true");
+    expect(screen.queryByLabelText(/좋아요 \d+개/)).not.toBeInTheDocument();
+  });
+
+  it("뒤로 가기: 취향 확인 → 고르기 → 범주(응답 유지)", async () => {
+    setupOnline(liked("a"));
+    api.getSummary.mockResolvedValue({
+      session: liked("a"),
+      likedStyles: [],
+      dislikedStyles: [],
+      skippedStyles: [],
+      unansweredStyleIds: [],
+      likedImages: [],
+      isExploringOnly: false,
+    });
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "취향 확인하기" }));
+    await screen.findByRole("heading", { name: "지금까지 고른 취향" });
+    await userEvent.click(screen.getByRole("button", { name: "뒤로 가기" }));
+    expect(await screen.findByRole("heading", { name: "스타일A" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "뒤로 가기" }));
+    expect(
+      await screen.findByRole("heading", { name: "어떤 옷을 추천받을까요?" }),
+    ).toBeInTheDocument();
+    expect(api.resetOnboardingSession).not.toHaveBeenCalled();
+    expect(api.putCategory).not.toHaveBeenCalled();
+  });
+});

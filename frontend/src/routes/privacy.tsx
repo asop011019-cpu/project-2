@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { siteHead } from "@/lib/site";
 export const Route = createFileRoute("/privacy")({
   head: () =>
@@ -10,8 +11,20 @@ export const Route = createFileRoute("/privacy")({
   component: Privacy,
 });
 function Privacy() {
+  const router = useRouter();
   return (
     <main className="privacy-page">
+      <button
+        type="button"
+        className="back-button"
+        aria-label="뒤로 가기"
+        onClick={() => {
+          if (router.history.canGoBack()) router.history.back();
+          else void router.navigate({ to: "/" });
+        }}
+      >
+        <ArrowLeft size={22} aria-hidden="true" />
+      </button>
       <Link to="/">← 처음 화면으로</Link>
       <p className="draft-label">초안 · 확정 전</p>
       <h1>개인정보 처리방침</h1>

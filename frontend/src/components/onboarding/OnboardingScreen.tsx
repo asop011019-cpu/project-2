@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, Maximize2, X, ArrowUp } from "lucide-react";
+import { Heart, Maximize2, X, ArrowUp, ArrowLeft } from "lucide-react";
 
 import {
   AlertDialog,
@@ -137,8 +137,11 @@ export function OnboardingScreen({
   });
 
   const responseMutation = useMutation({
-    mutationFn: (v: { styleId: string; response: StyleResponse; next: string | null }) =>
-      putStyleResponse(v.styleId, v.response, v.next),
+    mutationFn: (v: {
+      styleId: string;
+      response: StyleResponse;
+      next: string | null | undefined;
+    }) => putStyleResponse(v.styleId, v.response, v.next),
     onSuccess: (s, v) => {
       setSession(s);
       setError(null);
@@ -268,8 +271,26 @@ export function OnboardingScreen({
         <IntroScreen onStart={() => transition(() => setIntro(false))} />
       ) : (
         <div className="onboarding-shell">
-          <header className="onboarding-header">
-            <span className="label-caps">입고 싶은 가능성</span>
+          <header className="onboarding-header items-center">
+            <span className="onboarding-header-start">
+              {(step !== "category" || showIntro) && !sessionQuery.isPending && (
+                <button
+                  type="button"
+                  className="back-button"
+                  aria-label="뒤로 가기"
+                  disabled={busy}
+                  onClick={() => {
+                    setError(null);
+                    if (step === "summary") setStep("explore");
+                    else if (step === "explore") setStep("category");
+                    else transition(() => setIntro(true));
+                  }}
+                >
+                  <ArrowLeft size={22} aria-hidden="true" />
+                </button>
+              )}
+              <span className="label-caps">입고 싶은 가능성</span>
+            </span>
             <span className="label-caps text-muted-foreground">
               <span className="text-foreground">{stepIndex}</span> / 03
             </span>
@@ -374,7 +395,12 @@ export function OnboardingScreen({
                 장르를 열어 보는 것은 저장되지 않아요. 취향은 아래 스타일 응답으로만 기록돼요.
               </p>
 
-              <PreferenceRail session={session} message={error ?? notice} failed={!!error} />
+              <PreferenceRail
+                session={session}
+                message={error ?? notice}
+                failed={!!error}
+                currentStyleId={activeId}
+              />
               <div className="explore-layout">
                 <ol className="genre-list" aria-label="상위 장르">
                   {sections.map((g, gi) => {
@@ -463,6 +489,14 @@ export function OnboardingScreen({
                           styleId: activeId,
                           response,
                           next: order[i + 1] ?? null,
+                        });
+                      }}
+                      onDoubleLike={() => {
+                        setError(null);
+                        responseMutation.mutate({
+                          styleId: activeId,
+                          response: "liked",
+                          next: undefined,
                         });
                       }}
                       onNavigate={(id) => {
@@ -558,6 +592,7 @@ function StyleCard({
   busy,
   failed,
   onRespond,
+  onDoubleLike,
   onNavigate,
   onHeart,
   onZoom,
@@ -568,6 +603,7 @@ function StyleCard({
   busy: boolean;
   failed: boolean;
   onRespond: (r: StyleResponse) => void;
+  onDoubleLike: () => void;
   onNavigate: (id: string) => void;
   onHeart: (img: StyleImage, selected: boolean) => void;
   onZoom: (img: StyleImage) => void;
@@ -581,13 +617,40 @@ function StyleCard({
   const drag = useRef<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const delta = useRef({ x: 0, y: 0 });
+  const lastTap = useRef(0);
+  const [burst, setBurst] = useState<{ x: number; y: number; key: number } | null>(null);
+  useEffect(() => {
+    if (failed) setBurst(null);
+  }, [failed]);
+  useEffect(() => {
+    if (!burst) return;
+    const t = setTimeout(() => setBurst(null), 650);
+    return () => clearTimeout(t);
+  }, [burst]);
   const primary = images[0];
-  const release = () => {
+  const coverRef = useRef<HTMLDivElement>(null);
+  const handleTap = (clientX: number, clientY: number) => {
+    const now = Date.now();
+    const prevTap = lastTap.current;
+    lastTap.current = now;
+    if (now - prevTap > 350) return; // 한 번 탭: 아무 동작 없음
+    lastTap.current = 0;
+    if (busy || current === "liked" || !order.includes(styleId)) return;
+    const rect = coverRef.current?.getBoundingClientRect();
+    setBurst({ x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0), key: now });
+    onDoubleLike();
+  };
+  const release = (e: React.PointerEvent) => {
     if (!drag.current) return;
     drag.current = null;
-    const response = swipeResponse(delta.current.x, delta.current.y);
+    const { x, y } = delta.current;
+    const response = swipeResponse(x, y);
     setOffset({ x: 0, y: 0 });
-    if (response && !busy) onRespond(response);
+    if (response) {
+      if (!busy) onRespond(response);
+    } else if (Math.abs(x) < 10 && Math.abs(y) < 10) {
+      handleTap(e.clientX, e.clientY);
+    }
   };
   return (
     <article className="mt-4">
@@ -612,7 +675,26 @@ function StyleCard({
           setOffset({ x: 0, y: 0 });
         }}
       >
-        <div className="swipe-cover">
+        <div
+          className="swipe-cover"
+          aria-describedby="double-tap-hint"
+          data-testid="style-card-photo"
+          ref={coverRef}
+        >
+          <span id="double-tap-hint" className="sr-only">
+            두 번 탭하면 좋아요
+          </span>
+          {burst && !failed && (
+            <Heart
+              key={burst.key}
+              className="tap-heart"
+              fill="currentColor"
+              aria-hidden="true"
+              data-testid="tap-heart"
+              style={{ left: burst.x, top: burst.y }}
+              onAnimationEnd={() => setBurst(null)}
+            />
+          )}
           {primary ? (
             <>
               <img src={primary.thumbnailUrl} alt={primary.alt} />

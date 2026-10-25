@@ -439,23 +439,73 @@
   display: flex;
   gap: 14px;
 }
-.rolling-count {
-  display: flex;
-  height: 34px;
-  overflow: hidden;
-  font-size: 30px;
-  font-weight: 800;
-  line-height: 34px;
-  font-variant-numeric: tabular-nums;
-}
-.digit-column {
+.like-status {
   display: flex;
   flex-direction: column;
-  transition: transform 0.5s;
+  align-items: center;
+  gap: 2px;
+  min-width: 44px;
 }
-.digit-column span {
-  height: 34px;
-  flex-shrink: 0;
+.like-status svg {
+  color: var(--foreground);
+  transition:
+    fill 0.2s,
+    color 0.2s;
+}
+.like-status-on svg {
+  color: var(--primary);
+  fill: var(--primary);
+}
+.back-button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--foreground);
+}
+.back-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.onboarding-header-start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tap-heart {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  color: var(--primary);
+  pointer-events: none;
+  z-index: 5;
+  animation: tap-heart 0.6s ease-out forwards;
+}
+@keyframes tap-heart {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  35% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tap-heart {
+    display: none;
+  }
 }
 .hanger-rail {
   flex: 1;
