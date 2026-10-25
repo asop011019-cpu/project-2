@@ -20,6 +20,7 @@ import {
   completeSession,
   createSession,
   getCatalog,
+  getSession,
   getStyle,
   getSummary,
   putCategory,
@@ -152,14 +153,43 @@ export function OnboardingScreen({
     onError: handleError,
   });
 
+  const photoSaveLock = useRef(false);
   const heartMutation = useMutation({
-    mutationFn: (v: { styleId: string; imageId: string; selected: boolean }) =>
-      putImagePreference(v.styleId, v.imageId, v.selected),
+    mutationFn: async (v: { styleId: string; imageId: string; selected: boolean }) => {
+      let confirmed: SessionView | null = null;
+      try {
+        confirmed = await putImagePreference(v.styleId, v.imageId, v.selected);
+        if (
+          v.selected &&
+          !confirmed.responses.some((r) => r.styleId === v.styleId && r.response === "liked")
+        ) {
+          confirmed = await putStyleResponse(v.styleId, "liked");
+        }
+        return confirmed;
+      } catch (e) {
+        // These endpoints are not atomic: retain successful server writes, never fake rollback.
+        if (confirmed) setSession(confirmed);
+        if (!(e instanceof ApiError && e.status === 401)) {
+          try {
+            setSession(await getSession());
+          } catch (restoreError) {
+            if (restoreError instanceof ApiError && restoreError.status === 401) {
+              setExpired(true);
+            }
+          }
+        }
+        throw e;
+      }
+    },
     onSuccess: (s) => {
       setSession(s);
       setError(null);
+      setNotice("취향을 저장했어요");
     },
     onError: handleError,
+    onSettled: () => {
+      photoSaveLock.current = false;
+    },
   });
 
   // 명시적 이전/다음: 서버 응답 SessionView로만 위치 확정 (낙관적 이동 금지)
@@ -503,9 +533,12 @@ export function OnboardingScreen({
                         setError(null);
                         if (!busy) positionMutation.mutate(id);
                       }}
-                      onHeart={(img, selected) =>
-                        heartMutation.mutate({ styleId: activeId, imageId: img.id, selected })
-                      }
+                      onHeart={(img, selected) => {
+                        if (busy || photoSaveLock.current) return;
+                        photoSaveLock.current = true;
+                        setError(null);
+                        heartMutation.mutate({ styleId: activeId, imageId: img.id, selected });
+                      }}
                       onZoom={setZoom}
                     />
                   ) : null}
@@ -617,30 +650,26 @@ function StyleCard({
   const drag = useRef<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const delta = useRef({ x: 0, y: 0 });
-  const lastTap = useRef(0);
-  const [burst, setBurst] = useState<{ x: number; y: number; key: number } | null>(null);
-  useEffect(() => {
-    if (failed) setBurst(null);
-  }, [failed]);
-  useEffect(() => {
-    if (!burst) return;
-    const t = setTimeout(() => setBurst(null), 650);
-    return () => clearTimeout(t);
-  }, [burst]);
+  const lastTap = useRef<{ imageId: string | null; time: number } | null>(null);
+  const gridDrag = useRef<{ x: number; y: number } | null>(null);
   const primary = images[0];
-  const coverRef = useRef<HTMLDivElement>(null);
-  const handleTap = (clientX: number, clientY: number) => {
+  const selected = (img: StyleImage) =>
+    session.imagePreferences.some(
+      (p) => p.styleId === styleId && p.imageId === img.id && p.selected,
+    );
+  const handleTap = (img?: StyleImage) => {
     const now = Date.now();
-    const prevTap = lastTap.current;
-    lastTap.current = now;
-    if (now - prevTap > 350) return; // 한 번 탭: 아무 동작 없음
-    lastTap.current = 0;
-    if (busy || current === "liked" || !order.includes(styleId)) return;
-    const rect = coverRef.current?.getBoundingClientRect();
-    setBurst({ x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0), key: now });
-    onDoubleLike();
+    const previous = lastTap.current;
+    const imageId = img?.id ?? null;
+    lastTap.current = { imageId, time: now };
+    if (!previous || previous.imageId !== imageId || now - previous.time > 350) return;
+    lastTap.current = null;
+    if (busy || !order.includes(styleId)) return;
+    if (img) {
+      if (!selected(img)) onHeart(img, true);
+    } else if (current !== "liked") onDoubleLike();
   };
-  const release = (e: React.PointerEvent) => {
+  const release = () => {
     if (!drag.current) return;
     drag.current = null;
     const { x, y } = delta.current;
@@ -649,7 +678,7 @@ function StyleCard({
     if (response) {
       if (!busy) onRespond(response);
     } else if (Math.abs(x) < 10 && Math.abs(y) < 10) {
-      handleTap(e.clientX, e.clientY);
+      handleTap(primary);
     }
   };
   return (
@@ -679,22 +708,10 @@ function StyleCard({
           className="swipe-cover"
           aria-describedby="double-tap-hint"
           data-testid="style-card-photo"
-          ref={coverRef}
         >
           <span id="double-tap-hint" className="sr-only">
             두 번 탭하면 좋아요
           </span>
-          {burst && !failed && (
-            <Heart
-              key={burst.key}
-              className="tap-heart"
-              fill="currentColor"
-              aria-hidden="true"
-              data-testid="tap-heart"
-              style={{ left: burst.x, top: burst.y }}
-              onAnimationEnd={() => setBurst(null)}
-            />
-          )}
           {primary ? (
             <>
               <img src={primary.thumbnailUrl} alt={primary.alt} />
@@ -707,30 +724,12 @@ function StyleCard({
               >
                 <Maximize2 />
               </Button>
-              <Button
-                variant="secondary"
-                size="icon"
-                aria-label="이 사진 마음에 들어요"
-                aria-pressed={session.imagePreferences.some(
-                  (p) => p.imageId === primary.id && p.selected,
-                )}
-                disabled={busy}
-                onClick={() =>
-                  onHeart(
-                    primary,
-                    !session.imagePreferences.some((p) => p.imageId === primary.id && p.selected),
-                  )
-                }
-                className="absolute right-3 top-3 rounded-full"
-              >
-                <Heart
-                  className={
-                    session.imagePreferences.some((p) => p.imageId === primary.id && p.selected)
-                      ? "fill-current text-primary"
-                      : ""
-                  }
-                />
-              </Button>
+              <PhotoHeart
+                image={primary}
+                selected={selected(primary)}
+                busy={busy}
+                onHeart={onHeart}
+              />
               {primary.isGenerated && <span className="photo-pending">AI 생성 예시</span>}
             </>
           ) : (
@@ -753,42 +752,48 @@ function StyleCard({
         <ul className="mt-4 grid grid-cols-2 gap-3">
           {images.slice(1).map((img) => (
             <li key={img.id} className="relative">
-              <Button
-                variant="ghost"
-                aria-label={`${img.alt || name} 크게 보기`}
-                className="h-auto p-0"
-                onClick={() => onZoom(img)}
+              <div
+                data-testid={`style-photo-${img.id}`}
+                className="photo-double-tap"
+                onPointerDown={(e) => {
+                  gridDrag.current = { x: e.clientX, y: e.clientY };
+                }}
+                onPointerUp={(e) => {
+                  const start = gridDrag.current;
+                  gridDrag.current = null;
+                  if (
+                    start &&
+                    Math.abs(e.clientX - start.x) < 10 &&
+                    Math.abs(e.clientY - start.y) < 10
+                  )
+                    handleTap(img);
+                }}
+                onPointerCancel={() => {
+                  gridDrag.current = null;
+                }}
               >
                 <img
                   src={img.thumbnailUrl}
                   alt={img.alt}
                   className="aspect-[3/4] w-full object-cover"
                 />
-              </Button>
+              </div>
+              <PhotoHeart image={img} selected={selected(img)} busy={busy} onHeart={onHeart} />
               <Button
                 size="icon"
                 variant="secondary"
-                aria-label="이 사진 마음에 들어요"
-                disabled={busy}
-                aria-pressed={session.imagePreferences.some(
-                  (p) => p.imageId === img.id && p.selected,
-                )}
-                onClick={() =>
-                  onHeart(
-                    img,
-                    !session.imagePreferences.some((p) => p.imageId === img.id && p.selected),
-                  )
-                }
-                className="absolute right-2 top-2 rounded-full"
+                aria-label={`${img.alt || name} 크게 보기`}
+                className="absolute right-3 top-16 rounded-full"
+                onClick={() => onZoom(img)}
               >
-                <Heart />
+                <Maximize2 />
               </Button>
             </li>
           ))}
         </ul>
       )}
       <div className="response-controls" role="group" aria-label="스타일 응답">
-        {[RESPONSES[1], RESPONSES[2], RESPONSES[0]].map(
+        {[RESPONSES[1], RESPONSES[2]].map(
           (r) =>
             r && (
               <Button
@@ -801,13 +806,7 @@ function StyleCard({
                 className={`response-command response-${r.value}`}
               >
                 <span className="response-circle">
-                  {r.value === "liked" ? (
-                    <Heart fill="currentColor" />
-                  ) : r.value === "disliked" ? (
-                    <X />
-                  ) : (
-                    <ArrowUp />
-                  )}
+                  {r.value === "disliked" ? <X /> : <ArrowUp />}
                 </span>
                 <span>{r.label}</span>
               </Button>
@@ -826,6 +825,32 @@ function StyleCard({
         </Button>
       </div>
     </article>
+  );
+}
+
+function PhotoHeart({
+  image,
+  selected,
+  busy,
+  onHeart,
+}: {
+  image: StyleImage;
+  selected: boolean;
+  busy: boolean;
+  onHeart: (image: StyleImage, selected: boolean) => void;
+}) {
+  return (
+    <Button
+      variant="secondary"
+      size="icon"
+      aria-label="이 사진 좋아요"
+      aria-pressed={selected}
+      disabled={busy}
+      onClick={() => onHeart(image, !selected)}
+      className="photo-heart absolute right-3 top-3 rounded-full"
+    >
+      <Heart aria-hidden="true" />
+    </Button>
   );
 }
 

@@ -23,3 +23,5 @@
 - Gesture interpretation is a pure function in `src/lib/swipe.ts`; swipe and buttons share the existing response mutation. Why: thresholds can be tested without introducing a second persistence path.
 - Stage transitions use the isolated `useCurtain` hook with reduced-motion bypass and timer cleanup; no transition may invent an API success. Why: presentation remains independent of session authority.
 - Visitor events go only through the no-op `track` adapter until an analytics provider is approved. Why: no external visitor data is sent by this implementation.
+
+- Photo preference activation uses one serialized mutation for image preference followed by any needed style response, retaining the latest server-confirmed session on partial failure and reconciling through GET session (never automatic session creation). Why: the two existing endpoints are non-atomic and all photo entry paths must share truthful state.

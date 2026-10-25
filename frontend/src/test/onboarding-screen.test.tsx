@@ -13,6 +13,7 @@ import { routeTree } from "@/routeTree.gen";
 const api = vi.hoisted(() => ({
   createSession: vi.fn(),
   getCatalog: vi.fn(),
+  getSession: vi.fn(),
   getStyle: vi.fn(),
   getSummary: vi.fn(),
   putCategory: vi.fn(),
@@ -98,6 +99,7 @@ function renderScreen(onComplete = vi.fn()) {
 
 function setupOnline(s: SessionView) {
   api.createSession.mockResolvedValue(s);
+  api.getSession.mockResolvedValue(s);
   api.getCatalog.mockResolvedValue(emptyCatalog);
   api.getStyle.mockResolvedValue({ images: [] });
 }
@@ -213,11 +215,15 @@ describe("OnboardingScreen", () => {
       ["별로", "disliked"],
       ["건너뛰기", "skipped"],
     ] as const) {
-      await userEvent.click(await screen.findByRole("button", { name: label }));
+      if (value === "liked") {
+        await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
+      } else {
+        await userEvent.click(await screen.findByRole("button", { name: label }));
+      }
       await waitFor(() => expect(api.putStyleResponse.mock.calls.at(-1)?.[1]).toBe(value));
     }
-    expect(api.putStyleResponse.mock.calls[0]).toEqual(["a", "liked", "b"]);
-    expect(api.putStyleResponse.mock.calls[1]).toEqual(["b", "disliked", null]);
+    expect(api.putStyleResponse.mock.calls[0]).toEqual(["a", "liked", undefined]);
+    expect(api.putStyleResponse.mock.calls[1]).toEqual(["a", "disliked", "b"]);
   });
 
   it("응답 저장 실패 시 상태 미반영", async () => {
@@ -226,10 +232,9 @@ describe("OnboardingScreen", () => {
       new ApiError({ status: 500, code: "INTERNAL_ERROR", message: "" }),
     );
     renderScreen();
-    const like = await screen.findByRole("button", { name: "좋아요" });
-    await userEvent.click(like);
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
     expect(await screen.findByText("저장에 실패했어요. 다시 시도해 주세요.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "좋아요" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("like-status")).toHaveAttribute("data-liked", "false");
   });
 
   it("하트와 확대는 별개", async () => {
@@ -248,11 +253,12 @@ describe("OnboardingScreen", () => {
     });
     api.putImagePreference.mockResolvedValue(
       session({
+        responses: [{ styleId: "a", response: "liked", updatedAt: "" }],
         imagePreferences: [{ styleId: "a", imageId: "i1", selected: true, updatedAt: "" }],
       }),
     );
     renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "이 사진 마음에 들어요" }));
+    await userEvent.click(await screen.findByRole("button", { name: "이 사진 좋아요" }));
     await waitFor(() => expect(api.putImagePreference).toHaveBeenCalledWith("a", "i1", true));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "사진1 크게 보기" }));
@@ -408,7 +414,7 @@ describe("ONB-002-R1", () => {
     expect(idle).not.toBeNull();
     expect(idle).not.toHaveClass("save-pill-open");
     expect(idle?.textContent).toBe("");
-    await userEvent.click(await screen.findByRole("button", { name: "좋아요" }));
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
     const pill = await screen.findByText("저장에 실패했어요. 다시 시도해 주세요.");
     expect(pill).toHaveClass("save-pill-open");
     expect(pill).toHaveAttribute("role", "status");
@@ -498,5 +504,175 @@ describe("ONB-003", () => {
     ).toBeInTheDocument();
     expect(api.resetOnboardingSession).not.toHaveBeenCalled();
     expect(api.putCategory).not.toHaveBeenCalled();
+  });
+});
+
+describe("ONB-003-R1 사진 선호", () => {
+  const images = ["i1", "i2"].map((id) => ({
+    id,
+    styleId: "a",
+    categoryId: "menswear" as const,
+    alt: id,
+    thumbnailUrl: `/${id}.jpg`,
+    originalUrl: `/${id}.jpg`,
+    width: 400,
+    height: 600,
+    format: "model_outfit" as const,
+    isGenerated: false,
+    order: 1,
+    sourceUrl: null,
+    creator: null,
+    usageStatus: "approved",
+    publicationStatus: "published",
+  }));
+  function setup(s = session()) {
+    setupOnline(s);
+    api.getStyle.mockResolvedValue({ images });
+    let saved = s;
+    api.putImagePreference.mockImplementation(async (_style, imageId, selected) => {
+      saved = { ...saved, imagePreferences: [{ styleId: "a", imageId, selected, updatedAt: "" }] };
+      return saved;
+    });
+    api.putStyleResponse.mockImplementation(async () => {
+      saved = { ...saved, responses: [{ styleId: "a", response: "liked", updatedAt: "" }] };
+      return saved;
+    });
+    renderScreen();
+  }
+  it("하단 좋아요 버튼 없음", async () => {
+    setup();
+    await screen.findByRole("heading", { name: "스타일A" });
+    expect(screen.queryByRole("button", { name: /^좋아요$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "별로" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "건너뛰기" })).toBeInTheDocument();
+  });
+  it.each([
+    ["style-card-photo", "i1", 0],
+    ["style-photo-i2", "i2", 1],
+  ] as const)("%s 더블탭은 해당 사진+스타일 저장, 위치 유지", async (testId, imageId, index) => {
+    setup();
+    await userEvent.dblClick(await screen.findByTestId(testId));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[index]).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+    expect(api.putImagePreference).toHaveBeenCalledWith("a", imageId, true);
+    expect(api.putStyleResponse.mock.calls).toEqual([["a", "liked"]]);
+    expect(screen.getByRole("heading", { name: "스타일A" })).toBeInTheDocument();
+    expect(screen.getByTestId("like-status")).toHaveAttribute("data-liked", "true");
+  });
+  it("선호 사진은 스타일이 liked가 아니어도 더블탭 무시", async () => {
+    setup(
+      session({
+        imagePreferences: [{ styleId: "a", imageId: "i1", selected: true, updatedAt: "" }],
+      }),
+    );
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
+    expect(api.putImagePreference).not.toHaveBeenCalled();
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+  });
+  it("대표·그리드 단일 탭은 저장·확대 없음", async () => {
+    setup();
+    await userEvent.click(await screen.findByTestId("style-card-photo"));
+    await userEvent.click(screen.getByTestId("style-photo-i2"));
+    expect(api.putImagePreference).not.toHaveBeenCalled();
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("하트 켜기는 liked 함께, 끄기는 사진만", async () => {
+    setup();
+    const heart = (await screen.findAllByRole("button", { name: "이 사진 좋아요" }))[0];
+    if (!heart) throw new Error("missing photo heart");
+    await userEvent.click(heart);
+    await waitFor(() => expect(heart).toHaveAttribute("aria-pressed", "true"));
+    expect(api.putStyleResponse.mock.calls).toEqual([["a", "liked"]]);
+    api.putStyleResponse.mockClear();
+    await userEvent.click(heart);
+    await waitFor(() => expect(heart).toHaveAttribute("aria-pressed", "false"));
+    expect(api.putImagePreference.mock.calls.at(-1)).toEqual(["a", "i1", false]);
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+    expect(screen.getByTestId("like-status")).toHaveAttribute("data-liked", "true");
+  });
+  it("liked 스타일 사진 켜기는 response 없음", async () => {
+    setup(session({ responses: [{ styleId: "a", response: "liked", updatedAt: "" }] }));
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[0]).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+  });
+  it("사진 저장 실패 시 서버 상태 복원·알림", async () => {
+    setup();
+    api.putImagePreference.mockRejectedValue(new ApiError({ status: 500, code: "X", message: "" }));
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
+    await screen.findByText("저장에 실패했어요. 다시 시도해 주세요.");
+    expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+    expect(api.getSession).toHaveBeenCalledTimes(1);
+  });
+  it("스타일 저장 실패는 성공한 사진 저장을 서버 응답대로 보존", async () => {
+    setup();
+    const partial = session({
+      imagePreferences: [{ styleId: "a", imageId: "i1", selected: true, updatedAt: "" }],
+    });
+    api.getSession.mockResolvedValue(partial);
+    api.putStyleResponse.mockRejectedValue(new ApiError({ status: 500, code: "X", message: "" }));
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
+    await screen.findByText("저장에 실패했어요. 다시 시도해 주세요.");
+    expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("like-status")).toHaveAttribute("data-liked", "false");
+  });
+  it("두 요청 성공 전에는 확정하지 않으며 중복 탭 무시", async () => {
+    setup();
+    let finish: ((s: SessionView) => void) | undefined;
+    api.putStyleResponse.mockImplementation(
+      () =>
+        new Promise<SessionView>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const photo = await screen.findByTestId("style-card-photo");
+    await userEvent.dblClick(photo);
+    await waitFor(() => expect(api.putStyleResponse).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await userEvent.dblClick(photo);
+    expect(api.putImagePreference).toHaveBeenCalledTimes(1);
+    finish?.(
+      session({
+        responses: [{ styleId: "a", response: "liked", updatedAt: "" }],
+        imagePreferences: [{ styleId: "a", imageId: "i1", selected: true, updatedAt: "" }],
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[0]).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+  });
+  it("401은 재생성·자동 재조회 없음", async () => {
+    setup();
+    api.putStyleResponse.mockRejectedValue(
+      new ApiError({ status: 401, code: "SESSION_REQUIRED", message: "" }),
+    );
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
+    await screen.findByText(/이전 기록을 불러오지 못했어요/);
+    expect(api.getSession).not.toHaveBeenCalled();
+    expect(api.resetOnboardingSession).not.toHaveBeenCalled();
+    expect(api.createSession).toHaveBeenCalledTimes(1);
   });
 });

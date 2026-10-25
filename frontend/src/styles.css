@@ -474,37 +474,34 @@
   align-items: center;
   gap: 6px;
 }
-.tap-heart {
-  position: absolute;
-  width: 56px;
-  height: 56px;
-  margin: -28px 0 0 -28px;
-  color: var(--primary);
-  pointer-events: none;
-  z-index: 5;
-  animation: tap-heart 0.6s ease-out forwards;
+.photo-double-tap {
+  touch-action: pan-y;
+  user-select: none;
 }
-@keyframes tap-heart {
-  0% {
-    transform: scale(0);
-    opacity: 1;
-  }
-  35% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
-  60% {
-    transform: scale(1);
-    opacity: 1;
-  }
+.photo-heart svg {
+  fill: transparent;
+  transition:
+    fill 0.2s,
+    color 0.2s;
+}
+.photo-heart[aria-pressed="true"] svg {
+  color: var(--primary);
+  fill: var(--primary);
+  animation: photo-heart-pop 0.3s ease-out;
+}
+@keyframes photo-heart-pop {
+  0%,
   100% {
     transform: scale(1);
-    opacity: 0;
+  }
+  50% {
+    transform: scale(1.25);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tap-heart {
-    display: none;
+  .photo-heart svg {
+    transition: none;
+    animation: none;
   }
 }
 .hanger-rail {
@@ -637,13 +634,6 @@
   display: grid;
   place-items: center;
   background: var(--secondary);
-}
-.response-liked .response-circle {
-  width: 68px;
-  height: 68px;
-  border: 0;
-  background: var(--primary);
-  color: var(--primary-foreground);
 }
 .response-skipped .response-circle {
   width: 46px;
