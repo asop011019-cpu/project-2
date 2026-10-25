@@ -713,7 +713,16 @@ function StyleCard({
             두 번 탭하면 좋아요
           </span>
           {primary ? (
-            <>
+            <div
+              className="swipe-photo"
+              data-testid="style-card-frame"
+              style={{
+                aspectRatio:
+                  primary.width > 0 && primary.height > 0
+                    ? `${primary.width} / ${primary.height}`
+                    : "3 / 4",
+              }}
+            >
               <img src={primary.thumbnailUrl} alt={primary.alt} />
               <Button
                 variant="secondary"
@@ -731,7 +740,7 @@ function StyleCard({
                 onHeart={onHeart}
               />
               {primary.isGenerated && <span className="photo-pending">AI 생성 예시</span>}
-            </>
+            </div>
           ) : (
             <span className="photo-pending">사진 준비 중</span>
           )}
@@ -740,12 +749,12 @@ function StyleCard({
               {offset.x > 15 ? "좋아요" : offset.x < -15 ? "별로" : "건너뛰기"}
             </span>
           )}
-          <div className="swipe-footer">
-            <h2>{name}</h2>
-            <span className="text-xs text-muted-foreground">
-              {idx + 1} / {order.length}
-            </span>
-          </div>
+        </div>
+        <div className="swipe-footer">
+          <h2>{name}</h2>
+          <span className="text-xs text-muted-foreground">
+            {idx + 1} / {order.length}
+          </span>
         </div>
       </div>
       {images.length > 1 && (

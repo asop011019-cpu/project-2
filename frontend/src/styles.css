@@ -565,13 +565,27 @@
   touch-action: none;
 }
 .swipe-cover {
-  height: 470px;
+  --cover-max: 470px;
+  min-height: 220px;
   position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 14px 14px 0;
 }
-.swipe-cover img {
+.swipe-photo {
+  position: relative;
+  height: var(--cover-max);
+  max-width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--background);
+}
+.swipe-photo img {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .photo-pending {
   position: absolute;
@@ -583,16 +597,11 @@
   padding: 5px 10px;
 }
 .swipe-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
-  padding: 20px;
-  background: var(--background);
+  padding: 14px 20px 20px;
 }
 .swipe-footer h2 {
   font-size: 26px;
@@ -972,7 +981,7 @@ a:focus-visible {
     margin-top: 0;
   }
   .explore-section .swipe-cover {
-    height: min(470px, 52svh);
+    --cover-max: min(470px, 52svh);
   }
   .response-controls {
     margin-top: 20px;

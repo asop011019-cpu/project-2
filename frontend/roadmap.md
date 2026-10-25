@@ -6,3 +6,8 @@
 # ONB-003-R1
 - [x] Remove bottom like and floating heart; unify photo double-tap and toggle saves with server-confirmed state.
 - [x] Update regression coverage, run vitest/lint and verify 390×844 (real API unavailable; test-only responses).
+# OPS-005
+- [x] Record approved operating workflow rules in project memory.
+
+# ONB-003-R2
+- [x] Primary style photo shown whole (server ratio, contain), name/order below photo.

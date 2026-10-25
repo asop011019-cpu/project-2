@@ -676,3 +676,28 @@ describe("ONB-003-R1 사진 선호", () => {
     expect(api.createSession).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ONB-003-R2 대표 사진 전신", () => {
+  it("대표 사진은 서버 비율의 칸에 담기고, 이름은 사진 칸 밖에 있다", async () => {
+    setupOnline(session());
+    api.getStyle.mockResolvedValue({
+      images: [
+        {
+          id: "i1",
+          styleId: "a",
+          alt: "전신",
+          thumbnailUrl: "/t.jpg",
+          originalUrl: "/o.jpg",
+          width: 600,
+          height: 800,
+          isGenerated: false,
+        },
+      ],
+    });
+    renderScreen();
+    const frame = await screen.findByTestId("style-card-frame");
+    expect(frame.style.aspectRatio).toBe("600 / 800");
+    expect(frame.querySelector("img")).toHaveAttribute("alt", "전신");
+    expect(screen.getByTestId("style-card-photo").querySelector("h2")).toBeNull();
+  });
+});
