@@ -1,0 +1,832 @@
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Heart, Maximize2, X, ArrowUp } from "lucide-react";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ApiError } from "@/lib/onboarding-api";
+import { CLOTHING_CATEGORIES, styleCountFor, type CategoryId } from "@/lib/onboarding-catalog";
+import {
+  completeSession,
+  createSession,
+  getCatalog,
+  getStyle,
+  getSummary,
+  putCategory,
+  putImagePreference,
+  putPosition,
+  putStyleResponse,
+  resetOnboardingSession,
+  type SessionView,
+  type StyleImage,
+  type StyleResponse,
+} from "@/lib/onboarding-session-api";
+import {
+  currentStyleOf,
+  describeOnboardingError,
+  genreSectionsFrom,
+  incompleteReason,
+} from "@/lib/onboarding-view";
+import { cn } from "@/lib/utils";
+import { INTRO_IMAGES } from "@/lib/site";
+import { swipeResponse } from "@/lib/swipe";
+import { track } from "@/lib/track";
+import { IntroScreen } from "./IntroScreen";
+import { PreferenceRail } from "./PreferenceRail";
+import { useCurtain } from "./useCurtain";
+import { EditorialFrame } from "./EditorialFrame";
+
+export const SESSION_KEY = ["onboarding", "session"] as const;
+type Step = "category" | "explore" | "summary";
+
+const RESPONSES: { value: StyleResponse; label: string }[] = [
+  { value: "liked", label: "좋아요" },
+  { value: "disliked", label: "별로" },
+  { value: "skipped", label: "건너뛰기" },
+];
+
+const FOCUS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+export function OnboardingScreen({
+  onComplete,
+  showIntro = false,
+}: {
+  onComplete: () => void;
+  showIntro?: boolean;
+}) {
+  const [intro, setIntro] = useState(showIntro);
+  const { curtain, transition } = useCurtain();
+  const [notice, setNotice] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const [step, setActualStep] = useState<Step>("category");
+  const setStep = (next: Step) => transition(() => setActualStep(next));
+  const [previewCategory, setPreviewCategory] = useState<CategoryId | null>(null);
+  const [openGenre, setOpenGenre] = useState<string | null>(null);
+  const [viewStyleId, setViewStyleId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<StyleImage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const restoredRef = useRef(false);
+
+  const sessionQuery = useQuery({
+    queryKey: SESSION_KEY,
+    queryFn: createSession,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const session = sessionQuery.data ?? null;
+  const sessionError = sessionQuery.error;
+  const is401 = expired || (sessionError instanceof ApiError && sessionError.status === 401);
+  const online = session !== null && !is401;
+  const offline = !online && !sessionQuery.isPending;
+
+  // 저장된 범주가 있으면 그 범주로 이어서 시작
+  useEffect(() => {
+    if (!session || restoredRef.current) return;
+    restoredRef.current = true;
+    if (session.selectedCategoryId) setActualStep("explore");
+  }, [session]);
+
+  const categoryId: CategoryId | null = online
+    ? (session?.selectedCategoryId ?? null)
+    : previewCategory;
+
+  const catalogQuery = useQuery({
+    queryKey: ["onboarding", "catalog", categoryId],
+    queryFn: () => getCatalog(categoryId ?? undefined),
+    enabled: online && categoryId !== null,
+    retry: false,
+  });
+
+  const setSession = (s: SessionView) => qc.setQueryData(SESSION_KEY, s);
+
+  const handleError = (e: unknown) => {
+    const d = describeOnboardingError(e);
+    if (d.action === "expired") {
+      setExpired(true);
+      return;
+    }
+    if (d.action === "refetch") void sessionQuery.refetch();
+    if (d.action === "toCategory") setStep("category");
+    setError(d.message);
+  };
+
+  const categoryMutation = useMutation({
+    mutationFn: putCategory,
+    onSuccess: (s) => {
+      track({ type: "category", categoryId: s.selectedCategoryId ?? "" });
+      setSession(s);
+      setError(null);
+      setOpenGenre(null);
+      setViewStyleId(null);
+      setStep("explore");
+    },
+    onError: handleError,
+  });
+
+  const responseMutation = useMutation({
+    mutationFn: (v: { styleId: string; response: StyleResponse; next: string | null }) =>
+      putStyleResponse(v.styleId, v.response, v.next),
+    onSuccess: (s, v) => {
+      setSession(s);
+      setError(null);
+      setViewStyleId(v.next ?? v.styleId);
+      track({ type: "response", response: v.response, styleId: v.styleId });
+      setNotice("취향을 저장했어요");
+    },
+    onError: handleError,
+  });
+
+  const heartMutation = useMutation({
+    mutationFn: (v: { styleId: string; imageId: string; selected: boolean }) =>
+      putImagePreference(v.styleId, v.imageId, v.selected),
+    onSuccess: (s) => {
+      setSession(s);
+      setError(null);
+    },
+    onError: handleError,
+  });
+
+  // 명시적 이전/다음: 서버 응답 SessionView로만 위치 확정 (낙관적 이동 금지)
+  const positionMutation = useMutation({
+    mutationFn: (styleId: string) => putPosition(styleId),
+    onSuccess: (s) => {
+      setSession(s);
+      setError(null);
+      setViewStyleId(s.currentStyleId);
+    },
+    onError: (e) => {
+      const d = describeOnboardingError(e);
+      if (d.action === "expired") {
+        setExpired(true);
+        return;
+      }
+      setError(
+        d.action === "refetch" ? d.message : "위치를 저장하지 못했어요. 다시 시도해 주세요.",
+      );
+      if (d.action === "refetch") void sessionQuery.refetch();
+    },
+  });
+
+  const summaryQuery = useQuery({
+    queryKey: ["onboarding", "summary"],
+    queryFn: getSummary,
+    enabled: online && step === "summary",
+    retry: false,
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: completeSession,
+    onSuccess: (s) => {
+      setSession(s);
+      track({ type: "complete" });
+      transition(onComplete);
+    },
+    onError: handleError,
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: resetOnboardingSession,
+    onSuccess: (s) => {
+      setSession(s);
+      setExpired(false);
+      setResetOpen(false);
+      setStep("category");
+      setPreviewCategory(null);
+      setError(null);
+    },
+    onError: () => {
+      setResetOpen(false);
+      setError("새로 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    },
+  });
+
+  const busy =
+    curtain ||
+    categoryMutation.isPending ||
+    responseMutation.isPending ||
+    heartMutation.isPending ||
+    positionMutation.isPending ||
+    completeMutation.isPending ||
+    resetMutation.isPending;
+
+  const chooseCategory = (id: CategoryId) => {
+    setError(null);
+    if (online) {
+      if (!busy) categoryMutation.mutate(id);
+    } else {
+      track({ type: "category", categoryId: id });
+      setPreviewCategory(id);
+      setOpenGenre(null);
+      setStep("explore");
+    }
+  };
+
+  const { sections, source } = categoryId
+    ? genreSectionsFrom(online ? catalogQuery.data : null, categoryId)
+    : { sections: [], source: "preview" as const };
+  const isPreview = !online || source === "preview";
+
+  const order = session?.activeStyleOrder ?? [];
+  const activeId =
+    online && session
+      ? viewStyleId && order.includes(viewStyleId)
+        ? viewStyleId
+        : currentStyleOf(session)
+      : null;
+
+  const styleQuery = useQuery({
+    queryKey: ["onboarding", "style", activeId],
+    queryFn: () => getStyle(activeId ?? ""),
+    enabled: activeId !== null,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 1700);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const stepIndex = step === "category" ? "01" : step === "explore" ? "02" : "03";
+
+  return (
+    <main className="min-h-screen bg-background text-foreground">
+      {intro ? (
+        <IntroScreen onStart={() => transition(() => setIntro(false))} />
+      ) : (
+        <div className="onboarding-shell">
+          <header className="onboarding-header">
+            <span className="label-caps">입고 싶은 가능성</span>
+            <span className="label-caps text-muted-foreground">
+              <span className="text-foreground">{stepIndex}</span> / 03
+            </span>
+          </header>
+
+          {is401 && (
+            <div
+              role="alert"
+              className="connection-notice flex flex-wrap items-center justify-between gap-3"
+            >
+              <p className="text-sm">
+                이전 기록을 불러오지 못했어요. 새로 시작하면 지금까지의 기록은 지워져요.
+              </p>
+              <Button
+                variant="outline"
+                className="rounded-none border-foreground"
+                onClick={() => setResetOpen(true)}
+              >
+                새로 시작
+              </Button>
+            </div>
+          )}
+
+          {offline && !is401 && (
+            <div role="status" className="connection-notice">
+              <p className="label-caps text-highlight">분류 미리보기 · 저장 연결 준비 중</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                서버에 연결할 수 없어요. 분류는 둘러볼 수 있지만 어떤 선택도 저장되지 않아요.
+              </p>
+              <Button
+                variant="link"
+                className="mt-1 h-auto p-0 text-foreground"
+                onClick={() => void sessionQuery.refetch()}
+              >
+                다시 연결
+              </Button>
+            </div>
+          )}
+
+          {sessionQuery.isPending ? (
+            <div role="status" aria-label="기록을 불러오는 중" className="category-grid">
+              <div className="category-skeleton" />
+              <div className="category-skeleton" />
+            </div>
+          ) : step === "category" ? (
+            <section key="category" className="category-section">
+              <h1 className="category-title">
+                어떤 옷을
+                <br />
+                추천받을까요?
+              </h1>
+              <p className="mt-4 text-sm text-muted-foreground">추천받을 옷의 범주</p>
+              <div className="category-grid">
+                {CLOTHING_CATEGORIES.map((c, i) => {
+                  const count = styleCountFor(c.id);
+                  const photo = INTRO_IMAGES[i];
+                  return (
+                    <Button
+                      variant="ghost"
+                      key={c.id}
+                      aria-pressed={categoryId === c.id}
+                      aria-label={`${c.name} 선택, ${count}개 스타일`}
+                      disabled={busy}
+                      onClick={() => chooseCategory(c.id)}
+                      className="category-card"
+                    >
+                      {photo && <img src={photo.src} alt={photo.alt} />}
+                      <span aria-hidden="true" className="category-caption">
+                        <span className="category-name">{c.name}</span>
+                        <span className="category-count">
+                          {categoryMutation.isPending && categoryMutation.variables === c.id
+                            ? "저장 중…"
+                            : `${count}개 스타일`}
+                        </span>
+                      </span>
+                    </Button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : step === "explore" && categoryId ? (
+            <section key="explore" className="explore-section animate-page mt-6">
+              <div className="flex items-baseline justify-between gap-4">
+                <p className="label-caps text-muted-foreground">02 — 장르 · 스타일</p>
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-xs text-foreground"
+                  onClick={() => setStep("category")}
+                >
+                  범주 바꾸기
+                </Button>
+              </div>
+              <h1 className="explore-heading mt-4 font-display text-4xl font-bold leading-[1.1] tracking-tight md:text-6xl">
+                {CLOTHING_CATEGORIES.find((c) => c.id === categoryId)?.name}의 장르
+              </h1>
+              {isPreview && online && (
+                <p role="status" className="mt-3 label-caps text-highlight">
+                  분류 미리보기 · 저장 연결 준비 중
+                </p>
+              )}
+              <p className="browse-note mt-3 text-sm text-muted-foreground">
+                장르를 열어 보는 것은 저장되지 않아요. 취향은 아래 스타일 응답으로만 기록돼요.
+              </p>
+
+              <PreferenceRail session={session} message={error ?? notice} failed={!!error} />
+              <div className="explore-layout">
+                <ol className="genre-list" aria-label="상위 장르">
+                  {sections.map((g, gi) => {
+                    const open = openGenre === g.id;
+                    return (
+                      <li key={g.id} className="border-t border-border">
+                        <Button
+                          variant="ghost"
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => setOpenGenre(open ? null : g.id)}
+                          className={cn(
+                            "h-auto w-full justify-start whitespace-normal rounded-none px-0 items-baseline gap-4 py-4 text-left hover:bg-secondary",
+                            FOCUS,
+                          )}
+                        >
+                          <span className="label-caps w-6 text-muted-foreground">
+                            {String(gi + 1).padStart(2, "0")}
+                          </span>
+                          <span className="flex-1 text-left font-display text-2xl font-black">
+                            {g.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{g.styles.length}</span>
+                        </Button>
+                        {open && (
+                          <div className="animate-page pb-6 pl-10">
+                            {g.image && (
+                              <figure data-testid="genre-representative" className="mb-4">
+                                <img
+                                  src={g.image.thumbnailUrl}
+                                  alt={g.image.alt}
+                                  width={g.image.width}
+                                  height={g.image.height}
+                                  className="aspect-[4/3] w-full object-cover"
+                                />
+                                <figcaption className="label-caps mt-2 text-muted-foreground">
+                                  장르 대표 이미지 · {g.name}
+                                </figcaption>
+                              </figure>
+                            )}
+                            <p className="text-sm leading-relaxed text-muted-foreground">
+                              {g.description}
+                            </p>
+                            <ul className="mt-4 grid grid-cols-2 gap-3">
+                              {g.styles.map((s, si) => (
+                                <li key={s.id} className={si % 3 === 0 ? "col-span-2" : ""}>
+                                  <EditorialFrame
+                                    title={s.name}
+                                    ratio={si % 3 === 0 ? "wide" : "tall"}
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+
+                <div className="explore-deck">
+                  <p className="response-label label-caps text-muted-foreground">스타일 응답</p>
+                  {!online ? (
+                    <p className="mt-4 border border-dashed border-input p-5 text-sm text-muted-foreground">
+                      저장 연결이 준비되면 스타일마다 좋아요·별로·건너뛰기로 응답할 수 있어요.
+                    </p>
+                  ) : order.length === 0 ? (
+                    <div role="status" className="mt-4 bg-secondary p-6">
+                      <p className="font-serif-kr text-2xl font-bold">콘텐츠 준비 중</p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        응답할 수 있는 스타일 사진을 준비하고 있어요. 준비되면 여기서 바로 이어갈 수
+                        있어요.
+                      </p>
+                    </div>
+                  ) : activeId ? (
+                    <StyleCard
+                      session={session as SessionView}
+                      styleId={activeId}
+                      images={styleQuery.data?.images ?? []}
+                      busy={busy}
+                      failed={!!error}
+                      onRespond={(response) => {
+                        setError(null);
+                        const i = order.indexOf(activeId);
+                        responseMutation.mutate({
+                          styleId: activeId,
+                          response,
+                          next: order[i + 1] ?? null,
+                        });
+                      }}
+                      onNavigate={(id) => {
+                        setError(null);
+                        if (!busy) positionMutation.mutate(id);
+                      }}
+                      onHeart={(img, selected) =>
+                        heartMutation.mutate({ styleId: activeId, imageId: img.id, selected })
+                      }
+                      onZoom={setZoom}
+                    />
+                  ) : null}
+
+                  <Button
+                    className="summary-action mt-8 w-full text-base"
+                    disabled={!online || busy}
+                    onClick={() => {
+                      setError(null);
+                      setStep("summary");
+                    }}
+                  >
+                    취향 확인하기
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ) : step === "summary" ? (
+            <SummaryStep
+              loading={summaryQuery.isPending}
+              failed={summaryQuery.isError}
+              summary={summaryQuery.data ?? null}
+              busy={busy}
+              error={error}
+              onRetry={() => void summaryQuery.refetch()}
+              onBack={() => setStep("explore")}
+              onComplete={() => {
+                setError(null);
+                completeMutation.mutate();
+              }}
+            />
+          ) : null}
+        </div>
+      )}
+      {curtain && (
+        <div className="curtain-panel" aria-hidden="true" data-testid="curtain">
+          <span />
+        </div>
+      )}
+
+      <Dialog open={zoom !== null} onOpenChange={(o) => !o && setZoom(null)}>
+        <DialogContent className="max-w-3xl rounded-none bg-background p-3">
+          <DialogTitle className="sr-only">사진 크게 보기</DialogTitle>
+          {zoom && (
+            <img
+              src={zoom.originalUrl}
+              alt={zoom.alt}
+              className="max-h-[80vh] w-full object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>처음부터 다시 시작할까요?</AlertDialogTitle>
+            <AlertDialogDescription>
+              이전 온보딩 기록이 지워지고 새 세션으로 시작해요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetMutation.isPending}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={(e) => {
+                e.preventDefault();
+                resetMutation.mutate();
+              }}
+            >
+              {resetMutation.isPending ? "시작하는 중…" : "새로 시작하기"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </main>
+  );
+}
+
+function StyleCard({
+  session,
+  styleId,
+  images,
+  busy,
+  failed,
+  onRespond,
+  onNavigate,
+  onHeart,
+  onZoom,
+}: {
+  session: SessionView;
+  styleId: string;
+  images: StyleImage[];
+  busy: boolean;
+  failed: boolean;
+  onRespond: (r: StyleResponse) => void;
+  onNavigate: (id: string) => void;
+  onHeart: (img: StyleImage, selected: boolean) => void;
+  onZoom: (img: StyleImage) => void;
+}) {
+  const order = session.activeStyleOrder;
+  const idx = order.indexOf(styleId);
+  const name = session.styles.find((s) => s.id === styleId)?.name ?? "";
+  const current = session.responses.find((r) => r.styleId === styleId)?.response ?? null;
+  const prev = order[idx - 1];
+  const next = order[idx + 1];
+  const drag = useRef<{ x: number; y: number } | null>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const delta = useRef({ x: 0, y: 0 });
+  const primary = images[0];
+  const release = () => {
+    if (!drag.current) return;
+    drag.current = null;
+    const response = swipeResponse(delta.current.x, delta.current.y);
+    setOffset({ x: 0, y: 0 });
+    if (response && !busy) onRespond(response);
+  };
+  return (
+    <article className="mt-4">
+      <div
+        className={cn("swipe-stage", drag.current && "swipe-stage-dragging", failed && "shake")}
+        style={{ transform: `translate(${offset.x}px, ${offset.y}px) rotate(${offset.x / 18}deg)` }}
+        onPointerDown={(e) => {
+          if (busy || (e.target as HTMLElement).closest("button")) return;
+          delta.current = { x: 0, y: 0 };
+          drag.current = { x: e.clientX, y: e.clientY };
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (drag.current) {
+            delta.current = { x: e.clientX - drag.current.x, y: e.clientY - drag.current.y };
+            setOffset(delta.current);
+          }
+        }}
+        onPointerUp={release}
+        onPointerCancel={() => {
+          drag.current = null;
+          setOffset({ x: 0, y: 0 });
+        }}
+      >
+        <div className="swipe-cover">
+          {primary ? (
+            <>
+              <img src={primary.thumbnailUrl} alt={primary.alt} />
+              <Button
+                variant="secondary"
+                size="icon"
+                aria-label={`${primary.alt || name} 크게 보기`}
+                onClick={() => onZoom(primary)}
+                className="absolute right-3 top-16 rounded-full"
+              >
+                <Maximize2 />
+              </Button>
+              <Button
+                variant="secondary"
+                size="icon"
+                aria-label="이 사진 마음에 들어요"
+                aria-pressed={session.imagePreferences.some(
+                  (p) => p.imageId === primary.id && p.selected,
+                )}
+                disabled={busy}
+                onClick={() =>
+                  onHeart(
+                    primary,
+                    !session.imagePreferences.some((p) => p.imageId === primary.id && p.selected),
+                  )
+                }
+                className="absolute right-3 top-3 rounded-full"
+              >
+                <Heart
+                  className={
+                    session.imagePreferences.some((p) => p.imageId === primary.id && p.selected)
+                      ? "fill-current text-primary"
+                      : ""
+                  }
+                />
+              </Button>
+              {primary.isGenerated && <span className="photo-pending">AI 생성 예시</span>}
+            </>
+          ) : (
+            <span className="photo-pending">사진 준비 중</span>
+          )}
+          {(offset.x > 15 || offset.x < -15 || offset.y < -15) && (
+            <span className="swipe-stamp" aria-hidden="true">
+              {offset.x > 15 ? "좋아요" : offset.x < -15 ? "별로" : "건너뛰기"}
+            </span>
+          )}
+          <div className="swipe-footer">
+            <h2>{name}</h2>
+            <span className="text-xs text-muted-foreground">
+              {idx + 1} / {order.length}
+            </span>
+          </div>
+        </div>
+      </div>
+      {images.length > 1 && (
+        <ul className="mt-4 grid grid-cols-2 gap-3">
+          {images.slice(1).map((img) => (
+            <li key={img.id} className="relative">
+              <Button
+                variant="ghost"
+                aria-label={`${img.alt || name} 크게 보기`}
+                className="h-auto p-0"
+                onClick={() => onZoom(img)}
+              >
+                <img
+                  src={img.thumbnailUrl}
+                  alt={img.alt}
+                  className="aspect-[3/4] w-full object-cover"
+                />
+              </Button>
+              <Button
+                size="icon"
+                variant="secondary"
+                aria-label="이 사진 마음에 들어요"
+                disabled={busy}
+                aria-pressed={session.imagePreferences.some(
+                  (p) => p.imageId === img.id && p.selected,
+                )}
+                onClick={() =>
+                  onHeart(
+                    img,
+                    !session.imagePreferences.some((p) => p.imageId === img.id && p.selected),
+                  )
+                }
+                className="absolute right-2 top-2 rounded-full"
+              >
+                <Heart />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="response-controls" role="group" aria-label="스타일 응답">
+        {[RESPONSES[1], RESPONSES[2], RESPONSES[0]].map(
+          (r) =>
+            r && (
+              <Button
+                variant="ghost"
+                key={r.value}
+                aria-label={r.label}
+                aria-pressed={current === r.value}
+                disabled={!order.includes(styleId) || busy}
+                onClick={() => onRespond(r.value)}
+                className={`response-command response-${r.value}`}
+              >
+                <span className="response-circle">
+                  {r.value === "liked" ? (
+                    <Heart fill="currentColor" />
+                  ) : r.value === "disliked" ? (
+                    <X />
+                  ) : (
+                    <ArrowUp />
+                  )}
+                </span>
+                <span>{r.label}</span>
+              </Button>
+            ),
+        )}
+      </div>
+      <div className="mt-4 flex items-center justify-between text-xs">
+        <Button variant="ghost" disabled={!prev || busy} onClick={() => prev && onNavigate(prev)}>
+          ← 이전
+        </Button>
+        <span className="text-muted-foreground">
+          응답 {session.progress.answeredCount} / {session.progress.totalCount}
+        </span>
+        <Button variant="ghost" disabled={!next || busy} onClick={() => next && onNavigate(next)}>
+          다음 →
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+function SummaryStep({
+  loading,
+  failed,
+  summary,
+  busy,
+  error,
+  onRetry,
+  onBack,
+  onComplete,
+}: {
+  loading: boolean;
+  failed: boolean;
+  summary: import("@/lib/onboarding-session-api").SessionSummary | null;
+  busy: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onBack: () => void;
+  onComplete: () => void;
+}) {
+  const reason = summary ? incompleteReason(summary) : null;
+  const canComplete = summary?.session.progress.canComplete === true;
+  return (
+    <section key="summary" className="animate-page mt-6">
+      <p className="label-caps text-muted-foreground">03 — 취향 확인</p>
+      <h1 className="summary-title mt-4">지금까지 고른 취향</h1>
+      {loading ? (
+        <p role="status" className="mt-8 text-muted-foreground">
+          요약을 불러오는 중…
+        </p>
+      ) : failed || !summary ? (
+        <div role="alert" className="mt-8 border-l-2 border-destructive pl-3 text-sm">
+          요약을 불러오지 못했어요.
+          <Button variant="link" className="ml-2 h-auto p-0" onClick={onRetry}>
+            다시 시도
+          </Button>
+        </div>
+      ) : (
+        <>
+          <PreferenceRail session={summary.session} message={null} failed={false} />
+          <ul className="liked-chips" aria-label="좋아요한 스타일">
+            {summary.likedStyles.map((s) => (
+              <li key={s.id}>{s.name}</li>
+            ))}
+          </ul>
+          <dl className="summary-counts">
+            {[
+              { label: "별로", count: summary.dislikedStyles.length },
+              { label: "건너뜀", count: summary.skippedStyles.length },
+              { label: "남음", count: summary.unansweredStyleIds.length },
+            ].map((g) => (
+              <div key={g.label}>
+                <dt>{g.label}</dt>
+                <dd>{g.count}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
+      )}
+      {reason && (
+        <p role="status" className="mt-8 text-sm text-muted-foreground">
+          {reason}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="mt-4 border-l-2 border-destructive pl-3 text-sm">
+          {error}
+        </p>
+      )}
+      <div className="mt-6 flex flex-col gap-3 md:flex-row">
+        <Button variant="outline" className="summary-action" onClick={onBack}>
+          스타일 더 보기
+        </Button>
+        <Button
+          className="summary-action flex-1 text-base"
+          disabled={!canComplete || busy}
+          onClick={onComplete}
+        >
+          취향 저장하고 기준 하의 등록으로
+        </Button>
+      </div>
+    </section>
+  );
+}
