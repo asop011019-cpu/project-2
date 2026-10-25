@@ -72,7 +72,7 @@
 
 ## 5. 남은 점
 
-- 로컬에서는 인트로·범주 카드 모델 사진이 깨져 보임: `src/assets/*.asset.json`의 `url`이 Lovable 자산 경로(`/__l5e/assets-v1/...`)라 Lovable 호스팅에서만 열림. 기능 검증과 무관하며, 실서비스 호스팅 결정 시 이미지 위치(저장소 `public/` 또는 별도 저장소)를 정해야 함.
+- 모델 사진: `src/assets/*.asset.json`의 `url`은 Lovable 자산 경로(`/__l5e/assets-v1/...`)라 원래 Lovable 호스팅에서만 열림. 로컬에서도 보이도록 같은 경로에 원본을 넣음 — `frontend/public/__l5e/assets-v1/<asset_id>/intro-menswear.jpg`, `.../intro-womenswear.jpg` (Lovable 자산과 크기 동일한 900×1600 원본, 출처 `design-references/intro-images`). 소스 코드는 바꾸지 않음. 로컬 `http://localhost:8080`에서 인트로와 범주 카드 두 장 모두 표시 확인. 공유용 `intro-share.jpg`는 화면에 쓰이지 않아(SITE_URL 설정 시 og:image) 넣지 않음. 실서비스 호스팅 시 이미지 위치는 다시 정해야 함.
 - 취향 응답·하트·위치·완료와 하의 사진 등록/삭제의 브라우저 실연동은 이번 범위 밖(다음 단위).
 - 운영 배포용 같은 출처 연결(Worker 서버 라우트 프록시 또는 리버스 프록시)과 백엔드 호스트는 미정.
 - v3 마이그레이션 충돌·탐색 API 병합은 보류(INT-001-A 제안 유지).
