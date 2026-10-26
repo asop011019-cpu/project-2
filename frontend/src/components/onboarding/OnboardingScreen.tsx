@@ -192,20 +192,47 @@ export function OnboardingScreen({
     },
   });
 
-  // 명시적 이전/다음: 서버 응답 SessionView로만 위치 확정 (낙관적 이동 금지)
+  // 명시적 이동(이전/다음/카드 선택): 서버 응답 SessionView로만 위치 확정 (낙관적 이동 금지).
+  // 위치 쓰기는 한 번에 하나만 실행하고, 진행 중 추가 선택은 최신 의도 하나만 보관해
+  // 성공 후 순차 처리한다 → 서버 최종 위치와 화면이 항상 같다. 실패/401이면 대기열을 버린다.
+  const queuedPosition = useRef<string | null>(null);
+  const [queuedView, setQueuedView] = useState<string | null>(null);
+  const [failedPosition, setFailedPosition] = useState<string | null>(null);
+  const deckRef = useRef<HTMLDivElement | null>(null);
   const positionMutation = useMutation({
     mutationFn: (styleId: string) => putPosition(styleId),
+    onMutate: () => {
+      setFailedPosition(null);
+    },
     onSuccess: (s) => {
       setSession(s);
       setError(null);
+      const next = queuedPosition.current;
+      queuedPosition.current = null;
+      setQueuedView(null);
+      if (next && next !== s.currentStyleId) {
+        positionMutation.mutate(next);
+        return;
+      }
       setViewStyleId(s.currentStyleId);
+      const deck = deckRef.current;
+      if (deck && typeof deck.getBoundingClientRect === "function") {
+        const r = deck.getBoundingClientRect();
+        if (r.top > window.innerHeight * 0.6 || r.bottom < 0) {
+          const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+          deck.scrollIntoView?.({ block: "start", behavior: reduce ? "auto" : "smooth" });
+        }
+      }
     },
-    onError: (e) => {
+    onError: (e, styleId) => {
+      queuedPosition.current = null;
+      setQueuedView(null);
       const d = describeOnboardingError(e);
       if (d.action === "expired") {
         setExpired(true);
         return;
       }
+      setFailedPosition(styleId);
       setError(
         d.action === "refetch" ? d.message : "위치를 저장하지 못했어요. 다시 시도해 주세요.",
       );
@@ -286,6 +313,57 @@ export function OnboardingScreen({
     enabled: activeId !== null,
     retry: false,
   });
+
+  // 저장 대상이 아닌 스타일(콘텐츠 미준비/서버 미연결)은 카탈로그 기반 읽기 전용 상세로만 연다.
+  // 서버 저장 위치·응답·선호는 건드리지 않는다.
+  const [browseStyleId, setBrowseStyleId] = useState<string | null>(null);
+  const browse = browseStyleId
+    ? (() => {
+        for (const g of sections) {
+          const st = g.styles.find((x) => x.id === browseStyleId);
+          if (st) return { style: st, genre: g };
+        }
+        return null;
+      })()
+    : null;
+  const pendingPosition = positionMutation.isPending
+    ? (queuedView ?? positionMutation.variables ?? null)
+    : null;
+  const shownId = browse ? browse.style.id : activeId;
+  const shownGenreId = browse
+    ? browse.genre.id
+    : (session?.styles.find((s) => s.id === activeId)?.genreGroupId ?? null);
+  // 실제 표시 상세가 바뀌면 소속 장르를 펼쳐 목록·상세 선택을 맞춘다 (이후 접기는 사용자 자유).
+  useEffect(() => {
+    if (shownGenreId) setOpenGenre(shownGenreId);
+  }, [shownId, shownGenreId]);
+
+  const selectBusy =
+    curtain ||
+    categoryMutation.isPending ||
+    responseMutation.isPending ||
+    heartMutation.isPending ||
+    completeMutation.isPending ||
+    resetMutation.isPending;
+  const selectStyle = (id: string) => {
+    if (selectBusy || photoSaveLock.current) return;
+    if (!online || !order.includes(id)) {
+      // 읽기 전용 탐색: 진행 중 위치 쓰기의 대기 의도만 취소하고 요청은 보내지 않는다.
+      queuedPosition.current = null;
+      setQueuedView(null);
+      setBrowseStyleId(id);
+      return;
+    }
+    setBrowseStyleId(null);
+    setError(null);
+    if (positionMutation.isPending) {
+      queuedPosition.current = id;
+      setQueuedView(id);
+      return;
+    }
+    if (id === activeId) return;
+    positionMutation.mutate(id);
+  };
 
   useEffect(() => {
     if (!notice) return;
@@ -475,14 +553,36 @@ export function OnboardingScreen({
                               {g.description}
                             </p>
                             <ul className="mt-4 grid grid-cols-2 gap-3">
-                              {g.styles.map((s, si) => (
-                                <li key={s.id} className={si % 3 === 0 ? "col-span-2" : ""}>
-                                  <EditorialFrame
-                                    title={s.name}
-                                    ratio={si % 3 === 0 ? "wide" : "tall"}
-                                  />
-                                </li>
-                              ))}
+                              {g.styles.map((s, si) => {
+                                const isCurrent = s.id === shownId && !pendingPosition;
+                                const isPending = s.id === pendingPosition;
+                                return (
+                                  <li key={s.id} className={si % 3 === 0 ? "col-span-2" : ""}>
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        "style-pick block w-full min-h-11 text-left",
+                                        isCurrent && "style-pick-current",
+                                        FOCUS,
+                                      )}
+                                      aria-label={`${s.name} 스타일 보기`}
+                                      aria-current={isCurrent ? "true" : undefined}
+                                      aria-busy={isPending || undefined}
+                                      onClick={() => selectStyle(s.id)}
+                                    >
+                                      <EditorialFrame
+                                        title={s.name}
+                                        ratio={si % 3 === 0 ? "wide" : "tall"}
+                                      />
+                                      {(isCurrent || isPending) && (
+                                        <span className="style-pick-badge label-caps">
+                                          {isPending ? "이동 중" : "보는 중"}
+                                        </span>
+                                      )}
+                                    </button>
+                                  </li>
+                                );
+                              })}
                             </ul>
                           </div>
                         )}
@@ -491,11 +591,40 @@ export function OnboardingScreen({
                   })}
                 </ol>
 
-                <div className="explore-deck">
+                <div className="explore-deck" ref={deckRef}>
                   <p className="response-label label-caps text-muted-foreground">스타일 응답</p>
-                  {!online ? (
+                  {failedPosition && !expired && (
+                    <Button
+                      variant="secondary"
+                      className="mt-3"
+                      onClick={() => selectStyle(failedPosition)}
+                    >
+                      다시 시도
+                    </Button>
+                  )}
+                  {browse ? (
+                    <article
+                      className="mt-4 bg-secondary p-6"
+                      aria-label={`${browse.style.name} 읽기 전용 상세`}
+                      data-testid="browse-detail"
+                    >
+                      <p className="label-caps text-muted-foreground">{browse.genre.name}</p>
+                      <h2 className="mt-2 font-display text-3xl font-black">{browse.style.name}</h2>
+                      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                        {browse.genre.description}
+                      </p>
+                      <p role="status" className="label-caps mt-4 text-highlight">
+                        사진 준비 중
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {online
+                          ? "이 스타일은 아직 응답할 수 없어요. 준비되면 여기서 바로 고를 수 있어요."
+                          : "저장 연결이 준비되면 스타일마다 좋아요·별로로 응답할 수 있어요."}
+                      </p>
+                    </article>
+                  ) : !online ? (
                     <p className="mt-4 border border-dashed border-input p-5 text-sm text-muted-foreground">
-                      저장 연결이 준비되면 스타일마다 좋아요·별로·건너뛰기로 응답할 수 있어요.
+                      저장 연결이 준비되면 스타일마다 좋아요·별로로 응답할 수 있어요.
                     </p>
                   ) : order.length === 0 ? (
                     <div role="status" className="mt-4 bg-secondary p-6">
@@ -530,8 +659,7 @@ export function OnboardingScreen({
                         });
                       }}
                       onNavigate={(id) => {
-                        setError(null);
-                        if (!busy) positionMutation.mutate(id);
+                        if (!busy) selectStyle(id);
                       }}
                       onHeart={(img, selected) => {
                         if (busy || photoSaveLock.current) return;
@@ -802,7 +930,7 @@ function StyleCard({
         </ul>
       )}
       <div className="response-controls" role="group" aria-label="스타일 응답">
-        {[RESPONSES[1], RESPONSES[2]].map(
+        {[RESPONSES[1]].map(
           (r) =>
             r && (
               <Button

@@ -213,7 +213,6 @@ describe("OnboardingScreen", () => {
     for (const [label, value] of [
       ["좋아요", "liked"],
       ["별로", "disliked"],
-      ["건너뛰기", "skipped"],
     ] as const) {
       if (value === "liked") {
         await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
@@ -341,7 +340,9 @@ describe("ONB-002-R1", () => {
     setupOnline(session());
     api.getCatalog.mockResolvedValue(catWithImage);
     renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: /장르G/ }));
+    // ONB-004: 현재 스타일의 장르는 자동으로 펼쳐진다
+    const genre = await screen.findByRole("button", { name: /장르G/ });
+    await waitFor(() => expect(genre).toHaveAttribute("aria-expanded", "true"));
     const imgs = await screen.findAllByAltText("대표사진");
     expect(imgs).toHaveLength(1);
     expect(imgs[0]?.closest("[data-testid=genre-representative]")).not.toBeNull();
@@ -544,7 +545,7 @@ describe("ONB-003-R1 사진 선호", () => {
     await screen.findByRole("heading", { name: "스타일A" });
     expect(screen.queryByRole("button", { name: /^좋아요$/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "별로" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "건너뛰기" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "건너뛰기" })).not.toBeInTheDocument();
   });
   it.each([
     ["style-card-photo", "i1", 0],
@@ -699,5 +700,261 @@ describe("ONB-003-R2 대표 사진 전신", () => {
     expect(frame.style.aspectRatio).toBe("600 / 800");
     expect(frame.querySelector("img")).toHaveAttribute("alt", "전신");
     expect(screen.getByTestId("style-card-photo").querySelector("h2")).toBeNull();
+  });
+});
+
+describe("ONB-004 스타일 카드 직접 선택", () => {
+  const catalog: CatalogView = {
+    version: 1,
+    contentStatus: "ready",
+    categories: [],
+    genreGroups: [
+      {
+        id: "g",
+        categoryId: "menswear",
+        name: "유러피안",
+        description: "",
+        order: 1,
+        styleDefinitions: [
+          { id: "a", name: "스타일A", order: 1 },
+          { id: "b", name: "스타일B", order: 2 },
+        ],
+        representativeImage: null,
+      },
+      {
+        id: "h",
+        categoryId: "menswear",
+        name: "아메리칸",
+        description: "",
+        order: 2,
+        styleDefinitions: [{ id: "c", name: "스타일C", order: 1 }],
+        representativeImage: null,
+      },
+    ],
+    styles: [],
+  } as unknown as CatalogView;
+  const base = () =>
+    session({
+      activeStyleOrder: ["a", "b", "c"],
+      styles: [
+        ...session().styles,
+        {
+          id: "c",
+          name: "스타일C",
+          genreGroupId: "h",
+          order: 3,
+          explorationOrder: 3,
+          contentStatus: "ready",
+        },
+      ],
+      responses: [{ styleId: "b", response: "skipped", updatedAt: "" }],
+    });
+  const GENRE: Record<string, RegExp> = { a: /유러피안/, b: /유러피안/, c: /아메리칸/ };
+  async function pick(id: string) {
+    const g = screen.getByRole("button", { name: GENRE[id]! });
+    if (g.getAttribute("aria-expanded") !== "true") await userEvent.click(g);
+    await userEvent.click(
+      screen.getByRole("button", { name: `스타일${id.toUpperCase()} 스타일 보기` }),
+    );
+  }
+  function setup(s = base()) {
+    setupOnline(s);
+    api.getCatalog.mockResolvedValue(catalog);
+    renderScreen();
+  }
+
+  it("같은 장르 카드 선택: putPosition만 호출, 응답 요청 없음", async () => {
+    api.putPosition.mockResolvedValue(base());
+    api.putPosition.mockResolvedValueOnce({ ...base(), currentStyleId: "b" });
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: "스타일B 스타일 보기" }));
+    expect(await screen.findByRole("heading", { name: "스타일B" })).toBeInTheDocument();
+    expect(api.putPosition).toHaveBeenCalledWith("b");
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+    expect(api.putImagePreference).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "스타일B 스타일 보기" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  });
+
+  it("다른 장르 카드 선택(키보드 Enter): 해당 장르 펼침·강조", async () => {
+    api.putPosition.mockResolvedValue({ ...base(), currentStyleId: "c" });
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: /아메리칸/ }));
+    screen.getByRole("button", { name: "스타일C 스타일 보기" }).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByRole("heading", { name: "스타일C" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /아메리칸/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("새로고침 복원: currentStyleId의 장르가 펼쳐지고 카드 강조", async () => {
+    setup({ ...base(), currentStyleId: "c" });
+    expect(await screen.findByRole("heading", { name: "스타일C" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "스타일C 스타일 보기" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  });
+
+  it("실패 시 위치 유지·재시도", async () => {
+    api.putPosition.mockRejectedValueOnce(new ApiError({ status: 500, code: "X", message: "" }));
+    api.putPosition.mockResolvedValueOnce({ ...base(), currentStyleId: "b" });
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: "스타일B 스타일 보기" }));
+    expect(
+      await screen.findByText("위치를 저장하지 못했어요. 다시 시도해 주세요."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "스타일A" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+    expect(await screen.findByRole("heading", { name: "스타일B" })).toBeInTheDocument();
+  });
+
+  it("401: reset 미호출", async () => {
+    api.putPosition.mockRejectedValue(
+      new ApiError({ status: 401, code: "SESSION_REQUIRED", message: "" }),
+    );
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: "스타일B 스타일 보기" }));
+    expect(await screen.findByText(/이전 기록을 불러오지 못했어요/)).toBeInTheDocument();
+    expect(api.resetOnboardingSession).not.toHaveBeenCalled();
+  });
+
+  // 실제 쓰기를 모사: 서버 저장 위치는 요청이 "처리될 때" 바뀌고, 응답은 수동으로 지연 해제한다.
+  function serverSim() {
+    const srv = { pos: "a", calls: [] as string[], inflight: 0, maxInflight: 0 };
+    const pending: (() => void)[] = [];
+    api.putPosition.mockImplementation(
+      (id: string) =>
+        new Promise<SessionView>((resolve) => {
+          srv.calls.push(id);
+          srv.inflight++;
+          srv.maxInflight = Math.max(srv.maxInflight, srv.inflight);
+          pending.push(() => {
+            srv.pos = id;
+            srv.inflight--;
+            resolve({ ...base(), currentStyleId: id });
+          });
+        }),
+    );
+    const flush = async () => {
+      for (let i = 0; i < 10 && pending.length; i++) {
+        pending.shift()?.();
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+    return { srv, flush };
+  }
+
+  it.each([
+    [["b", "c"], "c", "스타일C"],
+    [["b", "c", "b"], "b", "스타일B"],
+  ])("빠른 연속 선택 %j: 한 번에 하나, 서버 최종 위치=화면", async (seq, finalId, finalName) => {
+    const { srv, flush } = serverSim();
+    setup();
+    await screen.findByRole("heading", { name: "스타일A" });
+    for (const id of seq) await pick(id);
+    await flush();
+    expect(srv.maxInflight).toBe(1);
+    expect(srv.pos).toBe(finalId);
+    expect(await screen.findByRole("heading", { name: finalName })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `${finalName} 스타일 보기` })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+  });
+
+  it("대기열 중 실패: 대기 의도 폐기·자동 재시도 없음", async () => {
+    let fail: () => void = () => {};
+    api.putPosition.mockImplementation(
+      () =>
+        new Promise<SessionView>((_, reject) => {
+          fail = () => reject(new ApiError({ status: 500, code: "X", message: "" }));
+        }),
+    );
+    setup();
+    await screen.findByRole("heading", { name: "스타일A" });
+    await pick("b");
+    await pick("c");
+    fail();
+    expect(
+      await screen.findByText("위치를 저장하지 못했어요. 다시 시도해 주세요."),
+    ).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.putPosition).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("heading", { name: "스타일A" })).toBeInTheDocument();
+  });
+
+  it("order 밖(콘텐츠 미준비) 카드: 읽기 전용 상세, 요청 0, 준비된 카드로 복귀", async () => {
+    const extra = {
+      ...catalog,
+      genreGroups: [
+        ...catalog.genreGroups,
+        {
+          id: "k",
+          categoryId: "menswear",
+          name: "준비중장르",
+          description: "준비 설명",
+          order: 3,
+          styleDefinitions: [{ id: "z", name: "스타일Z", order: 1 }],
+          representativeImage: null,
+        },
+      ],
+    } as unknown as CatalogView;
+    setupOnline(base());
+    api.getCatalog.mockResolvedValue(extra);
+    api.putPosition.mockResolvedValue({ ...base(), currentStyleId: "b" });
+    renderScreen();
+    await screen.findByRole("heading", { name: "스타일A" });
+    await userEvent.click(screen.getByRole("button", { name: /준비중장르/ }));
+    const z = screen.getByRole("button", { name: "스타일Z 스타일 보기" });
+    z.focus();
+    await userEvent.keyboard("{Enter}");
+    const detail = await screen.findByTestId("browse-detail");
+    expect(detail).toHaveTextContent("스타일Z");
+    expect(detail).toHaveTextContent("준비 설명");
+    expect(detail).toHaveTextContent("사진 준비 중");
+    expect(z).toHaveAttribute("aria-current", "true");
+    expect(api.putPosition).not.toHaveBeenCalled();
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+    expect(api.putImagePreference).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: /유러피안/ }));
+    await userEvent.click(screen.getByRole("button", { name: "스타일A 스타일 보기" }));
+    expect(await screen.findByRole("heading", { name: "스타일A" })).toBeInTheDocument();
+    expect(screen.queryByTestId("browse-detail")).not.toBeInTheDocument();
+    expect(api.putPosition).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "스타일B 스타일 보기" }));
+    expect(await screen.findByRole("heading", { name: "스타일B" })).toBeInTheDocument();
+    expect(api.putPosition).toHaveBeenCalledWith("b");
+  });
+
+  it("사진 0장 ready 카드: 정상 상세 + 사진 준비 중", async () => {
+    api.putPosition.mockResolvedValue({ ...base(), currentStyleId: "b" });
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: "스타일B 스타일 보기" }));
+    expect(await screen.findByRole("heading", { name: "스타일B" })).toBeInTheDocument();
+    expect(screen.getAllByText("사진 준비 중").length).toBeGreaterThan(0);
+  });
+
+  it("서버 미연결: 카드 클릭은 읽기 전용 상세, 요청 0", async () => {
+    api.createSession.mockRejectedValue(
+      new ApiError({ status: 0, code: "NETWORK_ERROR", message: "" }),
+    );
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "남성복 선택, 24개 스타일" }));
+    await screen.findByRole("heading", { name: "남성복의 장르" });
+    const genres = genreGroupsFor("menswear");
+    const g = genres[2]!;
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(g.name) }));
+    const first = screen.getAllByRole("button", { name: / 스타일 보기$/ })[0]!;
+    const name = (first.getAttribute("aria-label") ?? "").replace(" 스타일 보기", "");
+    await userEvent.click(first);
+    expect(await screen.findByTestId("browse-detail")).toHaveTextContent(name);
+    expect(api.putPosition).not.toHaveBeenCalled();
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
   });
 });

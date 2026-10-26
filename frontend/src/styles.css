@@ -981,9 +981,44 @@ a:focus-visible {
     margin-top: 0;
   }
   .explore-section .swipe-cover {
-    --cover-max: min(470px, 52svh);
+    height: min(470px, 52svh);
   }
   .response-controls {
     margin-top: 20px;
+  }
+}
+
+/* ONB-004 스타일 카드 직접 선택 */
+.style-pick {
+  position: relative;
+  border-radius: 6px;
+  transition:
+    transform 0.12s,
+    box-shadow 0.2s;
+}
+.style-pick:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.style-pick:disabled {
+  cursor: default;
+}
+.style-pick-current {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.style-pick-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+@media (prefers-reduced-motion: reduce) {
+  .style-pick {
+    transition: none;
+  }
+  .style-pick:active:not(:disabled) {
+    transform: none;
   }
 }

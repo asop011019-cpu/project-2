@@ -11,3 +11,9 @@
 
 # ONB-003-R2
 - [x] Primary style photo shown whole (server ratio, contain), name/order below photo.
+
+# ONB-004
+- [x] Style cards in genre list jump to detail via position API; remove skip button.
+
+# ONB-004-R1
+- [x] All genre cards browsable (read-only detail outside order/offline); serialized position queue.
