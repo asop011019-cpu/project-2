@@ -52,6 +52,6 @@
 - 첫 시도(CSP로 막힌 회차)의 가입 대기 1건·state 1건은 10분 만료 후 다음 로그인 때 정리됨.
 
 ## 4. 미실행·설정 필요
-- 실제 카카오 로그인은 3-1장에서 검증 완료. 운영 전 필요: 운영 도메인 Redirect URI 등록, REST 키·시크릿 재발급 검토(채팅 노출 이력), 키 보관 위치(운영 환경변수). 필요: 카카오 개발자 앱 등록, REST API 키(·선택 Client Secret), Redirect URI `http://localhost:8080/api/auth/kakao/callback`(개발) 등록, 동의항목은 회원번호만. 서버 환경변수 `KAKAO_REST_API_KEY`(필수), `KAKAO_CLIENT_SECRET`(사용 시), `KAKAO_REDIRECT_URI`(기본 `PUBLIC_ORIGIN`+`/api/auth/kakao/callback`). Git·로그에 넣지 않음.
+- 실제 카카오 로그인은 3-1장에서 검증 완료. 운영 전 필요: 운영 도메인 Redirect URI 등록, REST 키·시크릿 재발급 검토(채팅 노출 이력), 키 보관 위치(운영 환경변수). 서버 환경변수: `KAKAO_REST_API_KEY`(필수), `KAKAO_CLIENT_SECRET`(콘솔에서 시크릿 ON이면 필수), `KAKAO_REDIRECT_URI`(기본 `PUBLIC_ORIGIN`+`/api/auth/kakao/callback`, 콘솔 등록값과 정확히 일치). Git·로그·채팅에 넣지 않음.
 - 실제 브라우저 확인 안 함: 로그인·가입 화면이 없음(AUTH-003). 동의문은 개발용 초안·법률 검토 전·운영자/AI 공급자 빈칸 → AI 분석 실전송 0(분석 기능 자체 없음).
 - 미구현: 탈퇴(AUTH-004, 9-1장 순서), 이메일+비밀번호(AUTH-005), 로그인 시도 제한(429), 만료 행 정리 작업(만료된 state·가입 대기는 새 시작 때 지움), 익명 진행 가져오기.
