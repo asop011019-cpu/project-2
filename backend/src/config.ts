@@ -18,7 +18,13 @@ export interface AuthConfig {
   renewAfterSeconds: number;
   rotationGraceSeconds: number;
   handshakeTtlSeconds: number;
-  kakao?: { restApiKey: string; clientSecret?: string; redirectUri: string };
+  reauthWindowSeconds: number;
+  kakao?: {
+    restApiKey: string;
+    clientSecret?: string;
+    redirectUri: string;
+    adminKey?: string;
+  };
 }
 const seconds = (value: string | undefined, fallback: number) =>
   z.coerce
@@ -71,6 +77,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       renewAfterSeconds: seconds(env.AUTH_RENEW_AFTER_SECONDS, 60 * 60 * 24),
       rotationGraceSeconds: seconds(env.AUTH_ROTATION_GRACE_SECONDS, 60),
       handshakeTtlSeconds: 600,
+      reauthWindowSeconds: 600,
       ...(env.KAKAO_REST_API_KEY
         ? {
             kakao: {
@@ -78,6 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
               ...(env.KAKAO_CLIENT_SECRET
                 ? { clientSecret: env.KAKAO_CLIENT_SECRET }
                 : {}),
+              ...(env.KAKAO_ADMIN_KEY ? { adminKey: env.KAKAO_ADMIN_KEY } : {}),
               redirectUri:
                 env.KAKAO_REDIRECT_URI ??
                 `${origin.origin}/api/auth/kakao/callback`,

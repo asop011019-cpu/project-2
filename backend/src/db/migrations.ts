@@ -113,6 +113,15 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
    ) STRICT;
    ALTER TABLE onboarding_sessions ADD COLUMN user_id TEXT REFERENCES users(id);
    CREATE UNIQUE INDEX onboarding_sessions_user_idx ON onboarding_sessions(user_id) WHERE user_id IS NOT NULL;`,
+  // v5 (AUTH-004): account deletion jobs. A job keeps only what later steps need (the Kakao member
+  // number for unlinking) and drops it once unlinked, so deletion can resume without a login.
+  `CREATE TABLE account_deletions (
+     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, provider TEXT, provider_subject TEXT,
+     stage TEXT NOT NULL CHECK(stage IN ('pending','data_deleted','done')),
+     attempts INTEGER NOT NULL CHECK(attempts>=0), last_error TEXT,
+     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+   ) STRICT;
+   CREATE INDEX account_deletions_stage_idx ON account_deletions(stage);`,
 ];
 
 /** Applies pending migrations; `target` (tests only) stops at an older schema version. */

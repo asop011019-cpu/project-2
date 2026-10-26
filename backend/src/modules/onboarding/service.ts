@@ -162,6 +162,15 @@ export class OnboardingService {
         this.repository.deleteSession(sessionId);
     });
   }
+
+  /** Deletes the user's progress, garment row and photo file (account deletion, AUTH-004). */
+  deleteForUser(userId: string): void {
+    this.repository.transaction(() => {
+      const id = this.repository.sessionIdForUser(userId);
+      // A photo that is already gone must not block the deletion forever.
+      if (id) this.repository.deleteSession(id, { missingFileOk: true });
+    });
+  }
   reset(sessionId: string | undefined): SessionView {
     return this.withSession(sessionId, (previous) => {
       this.repository.deleteSession(previous.id);

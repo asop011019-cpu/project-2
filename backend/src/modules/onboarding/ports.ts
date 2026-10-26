@@ -13,7 +13,7 @@ export interface OnboardingRepository {
   findSession(id: string): SessionRecord | undefined;
   sessionIdForUser(userId: string): string | undefined;
   insertSession(session: SessionRecord): void;
-  deleteSession(id: string): void;
+  deleteSession(id: string, options?: { missingFileOk?: boolean }): void;
   selectCategory(id: string, categoryId: ClothingCategoryId, now: string): void;
   touchSession(id: string, now: string): void;
   categorySession(

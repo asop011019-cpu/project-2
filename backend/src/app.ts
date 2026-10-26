@@ -153,7 +153,16 @@ export function buildApp(
     options.oauthProvider ??
       (config.auth.kakao ? kakaoProvider(config.auth.kakao) : undefined),
     options.now,
+    (userId) => service.deleteForUser(userId),
   );
+  // Resume account deletions interrupted by a crash or a provider outage.
+  app.addHook("onReady", async () => {
+    auth
+      .processDeletions()
+      .catch((error: unknown) =>
+        app.log.error({ err: error }, "Resuming account deletions failed"),
+      );
+  });
   const guard = createAuthGuard(auth, config);
   registerAuthRoutes(app, auth, config, guard);
   registerOnboardingRoutes(app, service, guard);

@@ -72,16 +72,21 @@ export class AuthService {
   private readonly config: AuthConfig;
   private readonly provider: OAuthProvider | undefined;
   private readonly now: () => Date;
+  /** Removes the user's onboarding progress, garment rows and photo files (owned by the onboarding module). */
+  private readonly deleteUserData: (userId: string) => void;
+  private deletionRun: Promise<void> = Promise.resolve();
   constructor(
     db: DatabaseSync,
     config: AuthConfig,
     provider: OAuthProvider | undefined,
     now: () => Date = () => new Date(),
+    deleteUserData: (userId: string) => void = () => {},
   ) {
     this.db = db;
     this.config = config;
     this.provider = provider;
     this.now = now;
+    this.deleteUserData = deleteUserData;
   }
 
   private transaction<T>(operation: () => T): T {
@@ -133,7 +138,10 @@ export class AuthService {
     return { ...row, required: row.required === 1 };
   }
 
-  startLogin(returnTo: unknown): { location: string; binder: string } {
+  startLogin(
+    returnTo: unknown,
+    options: { reauth?: boolean } = {},
+  ): { location: string; binder: string } {
     if (!this.provider)
       throw new DomainError(
         503,
@@ -157,7 +165,12 @@ export class AuthService {
           this.at(this.config.handshakeTtlSeconds),
         );
     });
-    return { location: this.provider.authorizeUrl(state), binder };
+    return {
+      location: this.provider.authorizeUrl(state, {
+        forceLogin: options.reauth === true,
+      }),
+      binder,
+    };
   }
 
   /** Consumes the state exactly once; a state is only valid with the browser cookie that started it. */
@@ -585,5 +598,119 @@ export class AuthService {
         )
         .run(this.at(), userId);
     });
+  }
+
+  /**
+   * Account deletion (AUTH-004). Step 1 commits atomically: the account is marked deleting (no new
+   * logins), every login session is revoked, and a deletion job records what later steps need.
+   * The remaining steps run from that job alone, so they can be retried without a login.
+   */
+  async requestDeletion(context: AuthContext): Promise<void> {
+    this.transaction(() => {
+      const session = this.db
+        .prepare("SELECT authenticated_at AS at FROM auth_sessions WHERE id=?")
+        .get(context.sessionId) as { at: string } | undefined;
+      if (
+        !session ||
+        Date.parse(session.at) + this.config.reauthWindowSeconds * 1000 <
+          this.now().getTime()
+      )
+        throw new DomainError(
+          401,
+          "REAUTH_REQUIRED",
+          "탈퇴하려면 카카오로 다시 로그인해 주세요.",
+        );
+      const identity = this.db
+        .prepare(
+          "SELECT provider, provider_subject AS subject FROM user_identities WHERE user_id=? AND provider='kakao'",
+        )
+        .get(context.userId) as
+        { provider: string; subject: string } | undefined;
+      const now = this.at();
+      this.db
+        .prepare(
+          "UPDATE users SET status='deleting', deleted_at=? WHERE id=? AND status='active'",
+        )
+        .run(now, context.userId);
+      this.db
+        .prepare(
+          "INSERT INTO account_deletions VALUES(?,?,?,?,'pending',0,NULL,?,?)",
+        )
+        .run(
+          randomUUID(),
+          context.userId,
+          identity?.provider ?? null,
+          identity?.subject ?? null,
+          now,
+          now,
+        );
+      this.db
+        .prepare(
+          "UPDATE auth_sessions SET revoked_at=?, revoke_reason='account_deleted' WHERE user_id=? AND revoked_at IS NULL",
+        )
+        .run(now, context.userId);
+    });
+    await this.processDeletions();
+  }
+
+  /** Advances unfinished deletion jobs; runs are serialized and safe to repeat. */
+  processDeletions(): Promise<void> {
+    this.deletionRun = this.deletionRun.then(() => this.runDeletions());
+    return this.deletionRun;
+  }
+  private async runDeletions(): Promise<void> {
+    const jobs = this.db
+      .prepare(
+        "SELECT id, user_id AS userId, provider_subject AS subject, stage FROM account_deletions WHERE stage!='done' ORDER BY created_at",
+      )
+      .all() as unknown as {
+      id: string;
+      userId: string;
+      subject: string | null;
+      stage: "pending" | "data_deleted";
+    }[];
+    for (const job of jobs) {
+      const failed = (code: string) =>
+        this.db
+          .prepare(
+            "UPDATE account_deletions SET attempts=attempts+1, last_error=?, updated_at=? WHERE id=?",
+          )
+          .run(code, this.at(), job.id);
+      try {
+        if (job.stage === "pending") {
+          // Photo files and onboarding rows first; a file error leaves everything in place for a retry.
+          this.deleteUserData(job.userId);
+          this.transaction(() => {
+            this.db.prepare("DELETE FROM users WHERE id=?").run(job.userId);
+            this.db
+              .prepare(
+                "UPDATE account_deletions SET stage='data_deleted', last_error=NULL, updated_at=? WHERE id=?",
+              )
+              .run(this.at(), job.id);
+          });
+          job.stage = "data_deleted";
+        }
+        if (job.subject) {
+          const result = this.provider
+            ? await this.provider.unlink(job.subject)
+            : "not_configured";
+          if (result === "not_configured") {
+            failed("KAKAO_UNLINK_NOT_CONFIGURED");
+            continue;
+          }
+        }
+        this.db
+          .prepare(
+            "UPDATE account_deletions SET stage='done', provider=NULL, provider_subject=NULL, last_error=NULL, updated_at=? WHERE id=?",
+          )
+          .run(this.at(), job.id);
+      } catch (error) {
+        failed(
+          error instanceof DomainError
+            ? error.code
+            : ((error as NodeJS.ErrnoException).code ?? "ERROR"),
+        );
+      }
+    }
   }
 }

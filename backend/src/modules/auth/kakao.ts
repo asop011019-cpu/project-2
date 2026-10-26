@@ -4,9 +4,12 @@ import { DomainError } from "../onboarding/domain.ts";
 /** A login provider the server talks to. Tests inject a fake through buildApp; there is no runtime switch to one. */
 export interface OAuthProvider {
   readonly name: "kakao";
-  authorizeUrl(state: string): string;
+  /** forceLogin asks Kakao to re-enter credentials (used before account deletion). */
+  authorizeUrl(state: string, options?: { forceLogin?: boolean }): string;
   /** Exchanges the authorization code and returns the provider's stable user number. */
   subjectFor(code: string): Promise<string>;
+  /** Disconnects the member from this app; "not_configured" when no admin key is set. */
+  unlink(subject: string): Promise<"unlinked" | "not_configured">;
 }
 
 const failure = () =>
@@ -22,13 +25,41 @@ export function kakaoProvider(
 ): OAuthProvider {
   return {
     name: "kakao",
-    authorizeUrl(state) {
+    authorizeUrl(state, options = {}) {
       const url = new URL("https://kauth.kakao.com/oauth/authorize");
       url.searchParams.set("response_type", "code");
       url.searchParams.set("client_id", settings.restApiKey);
       url.searchParams.set("redirect_uri", settings.redirectUri);
       url.searchParams.set("state", state);
+      if (options.forceLogin) url.searchParams.set("prompt", "login");
       return url.toString();
+    },
+    async unlink(subject) {
+      if (!settings.adminKey) return "not_configured";
+      const response = await fetchImpl(
+        "https://kapi.kakao.com/v1/user/unlink",
+        {
+          method: "POST",
+          headers: {
+            authorization: `KakaoAK ${settings.adminKey}`,
+            "content-type": "application/x-www-form-urlencoded;charset=utf-8",
+          },
+          body: new URLSearchParams({
+            target_id_type: "user_id",
+            target_id: subject,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      ).catch(() => undefined);
+      // An already-disconnected member is a success for deletion purposes.
+      if (response && (response.ok || response.status === 400)) {
+        if (response.ok) return "unlinked";
+        const body = (await response.json().catch(() => ({}))) as {
+          code?: number;
+        };
+        if (body.code === -101) return "unlinked";
+      }
+      throw failure();
     },
     async subjectFor(code) {
       const form = new URLSearchParams({

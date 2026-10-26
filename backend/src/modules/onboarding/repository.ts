@@ -99,7 +99,7 @@ export class SqliteOnboardingRepository implements OnboardingRepository {
         s.userId,
       );
   }
-  deleteSession(id: string): void {
+  deleteSession(id: string, options: { missingFileOk?: boolean } = {}): void {
     const row = this.db
       .prepare("SELECT filename FROM garments WHERE session_id=?")
       .get(id);
@@ -107,7 +107,9 @@ export class SqliteOnboardingRepository implements OnboardingRepository {
       if (!this.garmentRoot)
         throw new Error("Garment storage is not configured");
       this.undos.push(
-        garmentFiles(this.garmentRoot).remove(String(row.filename)),
+        garmentFiles(this.garmentRoot).remove(String(row.filename), {
+          missingOk: options.missingFileOk === true,
+        }),
       );
     }
     this.db.prepare("DELETE FROM onboarding_sessions WHERE id=?").run(id);

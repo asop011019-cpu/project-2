@@ -102,10 +102,15 @@ export function registerAuthRoutes(
 
   app.get(`${prefix}/kakao/start`, (request, reply) => {
     const query = z
-      .object({ returnTo: z.string().max(2048).optional() })
+      .object({
+        returnTo: z.string().max(2048).optional(),
+        reauth: z.literal("1").optional(),
+      })
       .strict()
       .parse(request.query);
-    const { location, binder } = auth.startLogin(query.returnTo);
+    const { location, binder } = auth.startLogin(query.returnTo, {
+      reauth: query.reauth === "1",
+    });
     cookies.set(reply, "oauth", binder, handshakeExpiry());
     return reply.redirect(location, 302);
   });
@@ -185,6 +190,15 @@ export function registerAuthRoutes(
       .strict()
       .parse(request.body ?? {});
     auth.logout(request.cookies[cookies.names.session]);
+    cookies.clear(reply, "session");
+    return reply.code(204).send();
+  });
+  app.delete(`${prefix}/account`, async (request, reply) => {
+    z.object({})
+      .strict()
+      .parse(request.body ?? {});
+    const context = guard(request, reply, { allowConsentUpdate: true });
+    await auth.requestDeletion(context);
     cookies.clear(reply, "session");
     return reply.code(204).send();
   });

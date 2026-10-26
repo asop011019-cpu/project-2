@@ -15,13 +15,27 @@ import type { OAuthProvider } from "../src/modules/auth/kakao.ts";
 import { DomainError } from "../src/modules/onboarding/domain.ts";
 
 /** Test-only Kakao: code "user-<n>" logs in Kakao member <n>; code "fail" is a provider outage. */
-export function fakeKakao(): OAuthProvider & { exchanged: string[] } {
+export function fakeKakao(): OAuthProvider & {
+  exchanged: string[];
+  unlinked: string[];
+  unlinkMode: "ok" | "not_configured" | "fail";
+} {
   const exchanged: string[] = [];
+  const unlinked: string[] = [];
   return {
     name: "kakao",
     exchanged,
-    authorizeUrl: (state) =>
-      `https://kauth.kakao.test/oauth/authorize?state=${encodeURIComponent(state)}`,
+    unlinked,
+    unlinkMode: "ok",
+    authorizeUrl: (state, options = {}) =>
+      `https://kauth.kakao.test/oauth/authorize?state=${encodeURIComponent(state)}${options.forceLogin ? "&prompt=login" : ""}`,
+    async unlink(subject) {
+      if (this.unlinkMode === "fail")
+        throw new DomainError(502, "OAUTH_PROVIDER_ERROR", "fake outage");
+      if (this.unlinkMode === "not_configured") return "not_configured";
+      unlinked.push(subject);
+      return "unlinked";
+    },
     async subjectFor(code) {
       exchanged.push(code);
       if (code === "fail")
