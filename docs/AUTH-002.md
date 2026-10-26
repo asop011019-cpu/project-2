@@ -36,7 +36,22 @@
 - 새 테스트 `backend/test/auth.integration.test.ts`(12개, **가짜 카카오 = 테스트 전용**, `buildApp`의 `oauthProvider` 주입으로만 가능하고 환경변수 등 런타임 전환 수단 없음): 신규 가입·기존 로그인·returnTo 유지 / state 다른 브라우저·재사용·위조·만료·거부·공급자 장애(무효 state면 공급자 호출 0) / returnTo 외부·`//`·`\\`·스킴·`/api/` 거부 / 필수 누락·구버전·미지 항목·헤더 없음·만료·같은 카카오 이중 가입 / 필수 새 버전 시 403 → 재동의 후 해제, 필수 철회 거부, 선택 동의 토글 기록 / 서버 재시작 후 로그인 유지, 미사용·절대 만료 / 동시 요청 3개 모두 200·교체 1회·유예 후 옛 토큰 401 / 로그아웃 토큰 재사용 401·전체 로그아웃 / A·B 사진 상호 접근 불가·개별 삭제 시 본인 파일만 삭제 / 익명 진행 보존·자동 귀속 없음 / 키 미설정 503 / 실제 카카오 클라이언트(가짜 fetch로 요청 형식·회원번호만 사용·실패 502).
 - 기존 테스트 갱신: 익명 쿠키 전제 부분을 로그인 기준으로 변경(보안·하의·재시작·분류 업그레이드). 분류 업그레이드 테스트는 옛 익명 행이 v4 후에도 그대로이고 `user_id` NULL인지 확인.
 
+## 3-1. 실제 카카오 검증 (2026-10-26, 사용자 카카오 계정, 내장 브라우저)
+- 구성: 화면 `http://localhost:8095`(기존 프론트 vite, `BACKEND_URL=http://localhost:3095`) → 백엔드 `localhost:3095`(이 worktree, 별도 DB `backend/data/kakao-live/`, gitignore). 카카오 콘솔: 카카오 로그인 활성화, Redirect URI `http://localhost:8095/api/auth/kakao/callback`, REST 키·클라이언트 시크릿은 worktree `backend/.env`(gitignore)에만, 값은 어디에도 기록 안 함. 카카오 로그인(비밀번호 입력)은 사용자가 직접.
+- 거친 오류와 원인: KOE004(콘솔에서 카카오 로그인 미활성) → 활성화 후 해결. 토큰 교환 KOE010(시크릿 ON인데 미입력·다른 키의 시크릿) → 새 REST 키에 연결된 카카오 로그인 시크릿 입력 후 해결(가짜 code로 KOE320 = 자격 정상 확인). 실패 동안 서버는 `/login?error=OAUTH_PROVIDER_ERROR`로 정상 리다이렉트. 백엔드 응답의 CSP(`default-src 'none'`) 때문에 백엔드가 직접 낸 페이지에서는 스크립트 요청이 막혀, 운영과 같은 "프론트가 앞, `/api` 프록시" 구성으로 시험.
+| 단계 | 결과 |
+|---|---|
+| start → 카카오 → callback(신규) | 302 `/signup`(화면 미구현이라 프론트 404 페이지 표시) |
+| GET signup/pending | 200, kakao, 동의문 3개(privacy_required·terms 필수, ai_analysis 선택), 본문 277·171·231자 |
+| POST signup(필수만 동의) | 201, returnTo `/`, 로그인 쿠키는 JS에서 안 보임(HttpOnly) |
+| GET me | 200, providers `["kakao"]`, 동의 terms·privacy true / ai_analysis false, consentUpdates 없음, 미사용 만료 30일·절대 만료 90일 |
+| POST onboarding/session | 201(계정 소유 진행 생성) |
+| 같은 카카오로 재로그인(returnTo `/garment`) | 가입 단계 없이 `/garment` 도착, 같은 사용자 ID |
+| POST logout → me / onboarding | 204 → 401 `AUTH_REQUIRED` / 401 `AUTH_REQUIRED` |
+| DB | users 1, identities kakao 1(회원번호 10자리, 원문 미기록), auth_sessions 2(로그아웃한 현재 세션만 revoked=logout, 가입 때 세션은 쿠키가 덮여 미사용 상태로 남아 만료 대기), user_consents 3·consent_events 3, 계정 소유 onboarding 1 |
+- 첫 시도(CSP로 막힌 회차)의 가입 대기 1건·state 1건은 10분 만료 후 다음 로그인 때 정리됨.
+
 ## 4. 미실행·설정 필요
-- **실제 카카오 로그인은 검증하지 않음**(키 없음). 필요: 카카오 개발자 앱 등록, REST API 키(·선택 Client Secret), Redirect URI `http://localhost:8080/api/auth/kakao/callback`(개발) 등록, 동의항목은 회원번호만. 서버 환경변수 `KAKAO_REST_API_KEY`(필수), `KAKAO_CLIENT_SECRET`(사용 시), `KAKAO_REDIRECT_URI`(기본 `PUBLIC_ORIGIN`+`/api/auth/kakao/callback`). Git·로그에 넣지 않음.
+- 실제 카카오 로그인은 3-1장에서 검증 완료. 운영 전 필요: 운영 도메인 Redirect URI 등록, REST 키·시크릿 재발급 검토(채팅 노출 이력), 키 보관 위치(운영 환경변수). 필요: 카카오 개발자 앱 등록, REST API 키(·선택 Client Secret), Redirect URI `http://localhost:8080/api/auth/kakao/callback`(개발) 등록, 동의항목은 회원번호만. 서버 환경변수 `KAKAO_REST_API_KEY`(필수), `KAKAO_CLIENT_SECRET`(사용 시), `KAKAO_REDIRECT_URI`(기본 `PUBLIC_ORIGIN`+`/api/auth/kakao/callback`). Git·로그에 넣지 않음.
 - 실제 브라우저 확인 안 함: 로그인·가입 화면이 없음(AUTH-003). 동의문은 개발용 초안·법률 검토 전·운영자/AI 공급자 빈칸 → AI 분석 실전송 0(분석 기능 자체 없음).
 - 미구현: 탈퇴(AUTH-004, 9-1장 순서), 이메일+비밀번호(AUTH-005), 로그인 시도 제한(429), 만료 행 정리 작업(만료된 state·가입 대기는 새 시작 때 지움), 익명 진행 가져오기.
