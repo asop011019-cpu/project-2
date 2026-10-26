@@ -1,5 +1,5 @@
 import { garmentFiles } from "./files.ts";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import sharp from "sharp";
 import { randomUUID } from "node:crypto";
@@ -16,6 +16,7 @@ import { z, ZodError } from "zod";
 import type { DatabaseSync } from "node:sqlite";
 import type { AppConfig } from "../../config.ts";
 import type { OnboardingService } from "../onboarding/service.ts";
+import type { AuthGuard } from "../auth/routes.ts";
 import { DomainError } from "../onboarding/domain.ts";
 
 const optionalText = (max: number) =>
@@ -64,6 +65,7 @@ export function registerGarmentRoutes(
   db: DatabaseSync,
   service: OnboardingService,
   config: AppConfig,
+  guard: AuthGuard,
 ) {
   const root =
     config.garmentRoot ??
@@ -75,9 +77,11 @@ export function registerGarmentRoutes(
         `SELECT id,garment_type AS garmentType,brand,product_name AS productName,purchase_url AS purchaseUrl,filename,width,height,created_at AS createdAt,updated_at AS updatedAt FROM garments WHERE session_id=?`,
       )
       .get(id) as Row | undefined;
-  const token = (r: FastifyRequest) =>
-    r.cookies[config.secureCookies ? "__Host-onboarding" : "onboarding_dev"];
-  const session = (r: FastifyRequest) => service.authenticated(token(r)).id;
+  // The garment belongs to the logged-in account's onboarding progress (AUTH-002).
+  const user = (r: FastifyRequest, reply: FastifyReply) =>
+    guard(r, reply).userId;
+  const existing = (r: FastifyRequest, reply: FastifyReply) =>
+    service.sessionIdForUser(user(r, reply));
   const view = (row: Row | undefined) =>
     row
       ? (({ filename: _, ...data }) => ({
@@ -97,20 +101,24 @@ export function registerGarmentRoutes(
         fieldSize: 16 * 1024,
       },
     });
-    scoped.addHook("onRequest", async (r) => {
-      session(r);
+    scoped.addHook("onRequest", async (r, reply) => {
+      guard(r, reply);
     });
-    scoped.get(url, (r) => ({ garment: view(get(session(r))) }));
+    scoped.get(url, (r, reply) => {
+      const id = existing(r, reply);
+      return { garment: id ? view(get(id)) : null };
+    });
     scoped.get(url + "/image", (r, reply) => {
       z.object({ v: z.string().optional() }).strict().parse(r.query);
-      const row = get(session(r));
+      const id = existing(r, reply);
+      const row = id ? get(id) : undefined;
       if (!row)
         throw new DomainError(404, "IMAGE_UNAVAILABLE", "사진이 없어요.");
       return reply
         .type("image/png")
         .send(readFileSync(path.join(root, row.filename)));
     });
-    scoped.put(url, async (r) => {
+    scoped.put(url, async (r, reply) => {
       let metadata: unknown;
       let image: Buffer | undefined;
       let seen = false;
@@ -192,9 +200,13 @@ export function registerGarmentRoutes(
         }
       }
       // No await below: DB and file updates are serialized on this server process.
-      const id = session(r),
-        old = get(id);
-      if (!old && !normalized) throw invalid("image");
+      const owner = user(r, reply);
+      // A first photo starts the account's onboarding progress if none exists yet.
+      const id =
+        service.sessionIdForUser(owner) ??
+        (normalized ? service.ensureForUser(owner).session.id : undefined);
+      const old = id ? get(id) : undefined;
+      if (!id || (!old && !normalized)) throw invalid("image");
       const now = new Date(
         Math.max(
           service.now().getTime(),
@@ -242,8 +254,9 @@ export function registerGarmentRoutes(
       return { garment: view(get(id)) };
     });
     scoped.delete(url, (r, reply) => {
-      const id = session(r),
-        old = get(id);
+      const id = existing(r, reply);
+      if (!id) return reply.code(204).send();
+      const old = get(id);
       let restore: (() => void) | undefined;
       db.exec("BEGIN IMMEDIATE");
       try {

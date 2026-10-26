@@ -15,14 +15,25 @@ import { DomainError } from "./modules/onboarding/domain.ts";
 import { SqliteOnboardingRepository } from "./modules/onboarding/repository.ts";
 import { OnboardingService } from "./modules/onboarding/service.ts";
 import { registerOnboardingRoutes } from "./modules/onboarding/routes.ts";
+import { syncConsentDocuments } from "./modules/auth/consent-documents.ts";
+import { kakaoProvider, type OAuthProvider } from "./modules/auth/kakao.ts";
+import { AuthService } from "./modules/auth/service.ts";
+import { createAuthGuard, registerAuthRoutes } from "./modules/auth/routes.ts";
 
 export function buildApp(
-  options: { config?: AppConfig; now?: () => Date; logger?: boolean } = {},
+  options: {
+    config?: AppConfig;
+    now?: () => Date;
+    logger?: boolean;
+    /** Test-only: integration tests pass a fake Kakao. Production always uses the real client from config. */
+    oauthProvider?: OAuthProvider;
+  } = {},
 ) {
   const config = options.config ?? loadConfig();
   const db = openDatabase(config.databasePath);
   try {
     seedCatalog(db);
+    syncConsentDocuments(db);
   } catch (error) {
     db.close();
     throw error;
@@ -136,8 +147,17 @@ export function buildApp(
     }),
   );
   app.get("/health", () => ({ status: "ok" }));
-  registerOnboardingRoutes(app, service, config);
-  registerGarmentRoutes(app, db, service, config);
+  const auth = new AuthService(
+    db,
+    config.auth,
+    options.oauthProvider ??
+      (config.auth.kakao ? kakaoProvider(config.auth.kakao) : undefined),
+    options.now,
+  );
+  const guard = createAuthGuard(auth, config);
+  registerAuthRoutes(app, auth, config, guard);
+  registerOnboardingRoutes(app, service, guard);
+  registerGarmentRoutes(app, db, service, config, guard);
   // A local image URL stays readable only while it belongs to currently public content.
   app.get("/media/*", async (request, reply) => {
     const reference = `/media/${(request.params as { "*": string })["*"]}`;
@@ -178,5 +198,5 @@ export function buildApp(
   app.addHook("onClose", async () => {
     db.close();
   });
-  return { app, repository, service, db, config };
+  return { app, repository, service, auth, db, config };
 }

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { AppConfig } from "../../config.ts";
+import type { AuthGuard } from "../auth/routes.ts";
 import type { OnboardingService } from "./service.ts";
 import {
   categoryBody,
@@ -15,29 +15,14 @@ import {
 export function registerOnboardingRoutes(
   app: FastifyInstance,
   service: OnboardingService,
-  config: AppConfig,
+  guard: AuthGuard,
 ): void {
   const prefix = "/api/onboarding";
-  const cookieName = config.secureCookies
-    ? "__Host-onboarding"
-    : "onboarding_dev";
-  const token = (request: FastifyRequest) => request.cookies[cookieName];
-  const setCookie = (reply: FastifyReply, value: string, expiresAt: string) =>
-    reply.setCookie(cookieName, value, {
-      httpOnly: true,
-      secure: config.secureCookies,
-      sameSite: "strict",
-      path: "/",
-      maxAge: config.sessionTtlSeconds,
-      expires: new Date(expiresAt),
-    });
-  const clearCookie = (reply: FastifyReply) =>
-    reply.clearCookie(cookieName, {
-      httpOnly: true,
-      secure: config.secureCookies,
-      sameSite: "strict",
-      path: "/",
-    });
+  // Progress belongs to the logged-in account (AUTH-002); there is no anonymous onboarding cookie any more.
+  const user = (request: FastifyRequest, reply: FastifyReply) =>
+    guard(request, reply).userId;
+  const progressId = (request: FastifyRequest, reply: FastifyReply) =>
+    service.sessionIdForUser(user(request, reply));
   app.get(`${prefix}/catalog`, (request) =>
     service.catalog(catalogQuery.parse(request.query).categoryId),
   );
@@ -46,25 +31,24 @@ export function registerOnboardingRoutes(
   );
   app.post(`${prefix}/session`, (request, reply) => {
     emptyBody.parse(request.body ?? {});
-    const result = service.create(token(request));
-    if (result.token) setCookie(reply, result.token, result.session.expiresAt);
+    const result = service.ensureForUser(user(request, reply));
     return reply.code(result.created ? 201 : 200).send(result.session);
   });
-  app.get(`${prefix}/session`, (request) => {
+  app.get(`${prefix}/session`, (request, reply) => {
     emptyBody.parse(request.query);
-    return service.restore(token(request));
+    return service.restore(progressId(request, reply));
   });
-  app.put(`${prefix}/session/category`, (request) =>
+  app.put(`${prefix}/session/category`, (request, reply) =>
     service.selectCategory(
-      token(request),
+      progressId(request, reply),
       categoryBody.parse(request.body).categoryId,
     ),
   );
-  app.put(`${prefix}/session/styles/:styleId/response`, (request) => {
+  app.put(`${prefix}/session/styles/:styleId/response`, (request, reply) => {
     const { styleId } = styleParams.parse(request.params);
     const body = responseBody.parse(request.body);
     return service.respond(
-      token(request),
+      progressId(request, reply),
       styleId,
       body.response,
       body.nextStyleId,
@@ -72,41 +56,41 @@ export function registerOnboardingRoutes(
   });
   app.put(
     `${prefix}/session/styles/:styleId/images/:imageId/preference`,
-    (request) => {
+    (request, reply) => {
       const { styleId, imageId } = imageParams.parse(request.params);
       return service.preferImage(
-        token(request),
+        progressId(request, reply),
         styleId,
         imageId,
         preferenceBody.parse(request.body).selected,
       );
     },
   );
-  app.put(`${prefix}/session/position`, (request) =>
-    service.position(token(request), positionBody.parse(request.body).styleId),
+  app.put(`${prefix}/session/position`, (request, reply) =>
+    service.position(
+      progressId(request, reply),
+      positionBody.parse(request.body).styleId,
+    ),
   );
-  app.get(`${prefix}/session/summary`, (request) => {
+  app.get(`${prefix}/session/summary`, (request, reply) => {
     emptyBody.parse(request.query);
-    return service.summary(token(request));
+    return service.summary(progressId(request, reply));
   });
-  app.post(`${prefix}/session/complete`, (request) => {
+  app.post(`${prefix}/session/complete`, (request, reply) => {
     emptyBody.parse(request.body ?? {});
-    return service.complete(token(request));
+    return service.complete(progressId(request, reply));
   });
-  app.post(`${prefix}/session/refresh-catalog`, (request) => {
+  app.post(`${prefix}/session/refresh-catalog`, (request, reply) => {
     emptyBody.parse(request.body ?? {});
-    return service.refreshCatalog(token(request));
+    return service.refreshCatalog(progressId(request, reply));
   });
   app.post(`${prefix}/session/reset`, (request, reply) => {
     emptyBody.parse(request.body ?? {});
-    const result = service.reset(token(request));
-    setCookie(reply, result.token, result.session.expiresAt);
-    return result.session;
+    return service.reset(progressId(request, reply));
   });
   app.delete(`${prefix}/session`, (request, reply) => {
     emptyBody.parse(request.body ?? {});
-    service.delete(token(request));
-    clearCookie(reply);
+    service.delete(progressId(request, reply));
     return reply.code(204).send();
   });
 }

@@ -4,6 +4,8 @@
 
 ## 전송과 인증
 
+> **AUTH-002부터 로그인 필수.** `/session*` 경로는 로그인 쿠키(`auth_dev` / 운영 `__Host-auth`)로 인증하며, 로그인이 없으면 401 `AUTH_REQUIRED`(로그인 화면으로 이동), 바뀐 필수 동의가 있으면 403 `CONSENT_UPDATE_REQUIRED`. 취향 진행은 로그인 계정에 1개씩 붙고, 온보딩용 익명 쿠키(`onboarding_dev`)는 더 이상 발급·인정하지 않음. `/catalog`, `/styles/:id`는 공개 그대로. 로그인·가입·동의 API는 `docs/AUTH-001.md`·`docs/AUTH-002.md`.
+
 JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 변경 요청(POST/PUT/DELETE)**에는 `X-Onboarding-Request: 1`도 필요합니다. 브라우저 `fetch`는 `credentials: "include"`를 사용합니다. 세션 쿠키는 서버가 설정하며 JavaScript에서 읽거나 직접 저장하지 않습니다. URL·본문·헤더에 세션 ID를 넣어 인증하지 않습니다.
 
 브라우저는 동일 출처의 상대 경로로 호출합니다. CORS를 열지 않았으므로 개발 서버와 운영 프록시가 `/api`와 `/media`를 백엔드로 전달해야 합니다. `PUBLIC_ORIGIN`은 **사용자에게 보이는 프런트엔드 출처**와 일치시킵니다. HTTPS 운영에서는 Secure 쿠키를 사용합니다.
@@ -28,7 +30,7 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 
 `/health`는 루트의 상태 확인 경로입니다. 로컬 등록 이미지는 `/media/실제-등록한-파일명`으로 제공하며 현재 게시 조건을 충족하는 참조에만 접근할 수 있습니다. 기존 이미지 주소를 알고 있어도 게시 중단 후 로컬 이미지 요청은 404입니다. 외부 이미지 원본 서버의 접근 제어·캐시까지 이 API가 회수할 수는 없습니다.
 
-세션 경로는 쿠키 인증이 필요합니다. 예외적으로 `POST /session`은 쿠키가 없을 때 새 세션을 만들고, `DELETE /session`은 없는/만료된/잘못된 쿠키에도 204로 쿠키를 정리합니다. 유효하지 않은 쿠키를 가진 `POST /session`은 401이므로 UI가 조용히 새 세션으로 바꾸지 않습니다. 사용자에게 새로 시작을 안내한 뒤 DELETE → POST 순서로 처리합니다.
+세션 경로는 로그인이 필요합니다(AUTH-002). `POST /session`은 로그인 계정의 진행이 없으면 만들고(201) 있으면 돌려줍니다(200). 진행이 없는 계정의 다른 세션 경로는 401 `SESSION_REQUIRED`. `DELETE /session`은 진행(취향·하의)만 지우고 로그인은 유지하며, 진행이 없어도 204. `POST /session/reset`은 같은 계정에 새 진행을 만들며 쿠키를 바꾸지 않습니다. 401 `AUTH_REQUIRED`·`SESSION_REQUIRED` 모두 자동 초기화 금지.
 
 ## 타입과 필드
 

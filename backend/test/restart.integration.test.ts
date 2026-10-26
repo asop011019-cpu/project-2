@@ -74,6 +74,10 @@ test(
       await c.cleanup();
     });
     await publish(c, ["men_casual", "women_daily_casual"]);
+    // The child process has no fake Kakao, so log in once in-process on the same database.
+    const visitor = client(c);
+    await visitor.login();
+    const cookie = visitor.cookie;
     await c.app.close();
     const port = await freePort(),
       origin = `http://127.0.0.1:${port}`;
@@ -91,6 +95,8 @@ test(
             DATABASE_PATH: c.config.databasePath,
             ASSET_ROOT: c.config.assetRoot,
             PUBLIC_ORIGIN: origin,
+            // Keep the token fixed across both processes; rotation has its own test.
+            AUTH_RENEW_AFTER_SECONDS: String(60 * 60 * 24 * 365),
           },
           stdio: ["ignore", "ignore", "pipe"],
         },
@@ -114,14 +120,14 @@ test(
       "x-onboarding-request": "1",
       origin,
     };
+    const authenticated = { ...headers, cookie };
     const created = await fetch(`${origin}/api/onboarding/session`, {
       method: "POST",
-      headers,
+      headers: authenticated,
       body: "{}",
     });
     assert.equal(created.status, 201);
-    const cookie = created.headers.get("set-cookie")!.split(";")[0]!;
-    const authenticated = { ...headers, cookie };
+    assert.equal(created.headers.get("set-cookie"), null);
     const category = await fetch(`${origin}/api/onboarding/session/category`, {
       method: "PUT",
       headers: authenticated,

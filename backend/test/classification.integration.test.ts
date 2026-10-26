@@ -138,7 +138,7 @@ async function legacyDatabase() {
   const db = new DatabaseSync(config.databasePath, {
     enableForeignKeyConstraints: true,
   });
-  migrate(db);
+  migrate(db, 3);
   // Schema v2 only adds this column: reverse it in this isolated fixture to restore exact v1 DDL.
   db.exec(
     "DROP TABLE garments; ALTER TABLE styles DROP COLUMN exploration_order; PRAGMA user_version=1;",
@@ -222,14 +222,17 @@ test("v1 upgrade preserves all IDs, images, responses, completion, and operator-
     completedAt = "2026-10-23T00:05:00.000Z";
   const token = randomBytes(32).toString("base64url");
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  repository.insertSession({
-    id: "legacy-owner",
+  // Pre-AUTH schema: an anonymous session row without user_id.
+  db.prepare(
+    "INSERT INTO onboarding_sessions(id,token_hash,selected_category_id,started_at,updated_at,expires_at) VALUES(?,?,?,?,?,?)",
+  ).run(
+    "legacy-owner",
     tokenHash,
-    selectedCategoryId: "menswear",
+    "menswear",
     startedAt,
-    updatedAt: startedAt,
-    expiresAt: "2099-01-01T00:00:00.000Z",
-  });
+    startedAt,
+    "2099-01-01T00:00:00.000Z",
+  );
   const active = {
     menswear: ["men_gorpcore", "men_casual"],
     womenswear: ["women_daily_casual", "women_gorpcore"],
@@ -326,16 +329,45 @@ test("v1 upgrade preserves all IDs, images, responses, completion, and operator-
       oldOrders[categoryId],
     );
   }
+  // Since AUTH-002 the old anonymous cookie no longer opens progress, but the legacy rows stay intact.
   const restored = await upgraded.app.inject({
     method: "GET",
     url: "/api/onboarding/session",
     headers: { cookie: `onboarding_dev=${token}` },
   });
-  assert.equal(restored.statusCode, 200);
-  assert.deepEqual(restored.json().activeStyleOrder, active.menswear);
-  assert.equal(restored.json().currentStyleId, "men_casual");
-  assert.equal(restored.json().progress.answeredCount, 2);
-  assert.deepEqual(history(upgraded.db), before);
+  assert.equal(restored.statusCode, 401);
+  assert.equal(restored.json().error.code, "AUTH_REQUIRED");
+  assert.deepEqual(
+    upgraded.repository
+      .snapshot("legacy-owner", "menswear")
+      .filter((style) => !style.withdrawnAt)
+      .map((style) => style.styleId),
+    active.menswear,
+  );
+  assert.equal(
+    upgraded.repository.categorySession("legacy-owner", "menswear")
+      ?.currentStyleId,
+    "men_casual",
+  );
+  assert.equal(
+    upgraded.repository.responses("legacy-owner", "menswear").length,
+    2,
+  );
+  assert.equal(
+    upgraded.db
+      .prepare(
+        "SELECT user_id FROM onboarding_sessions WHERE id='legacy-owner'",
+      )
+      .get()!["user_id"],
+    null,
+  );
+  // v4 only adds onboarding_sessions.user_id; legacy rows keep it NULL and are otherwise unchanged.
+  const after = history(upgraded.db);
+  for (const row of after["onboarding_sessions"]!) {
+    assert.equal(row["user_id"], null);
+    delete row["user_id"];
+  }
+  assert.deepEqual(after, before);
   migrate(upgraded.db);
   assert.equal(upgraded.repository.catalog().version, 2);
   assert.deepEqual(upgraded.db.prepare("PRAGMA foreign_key_check").all(), []);

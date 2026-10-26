@@ -11,6 +11,29 @@ import {
   importCatalog,
 } from "../src/modules/onboarding/catalog-management.ts";
 import type { SessionView } from "../src/modules/onboarding/types.ts";
+import type { OAuthProvider } from "../src/modules/auth/kakao.ts";
+import { DomainError } from "../src/modules/onboarding/domain.ts";
+
+/** Test-only Kakao: code "user-<n>" logs in Kakao member <n>; code "fail" is a provider outage. */
+export function fakeKakao(): OAuthProvider & { exchanged: string[] } {
+  const exchanged: string[] = [];
+  return {
+    name: "kakao",
+    exchanged,
+    authorizeUrl: (state) =>
+      `https://kauth.kakao.test/oauth/authorize?state=${encodeURIComponent(state)}`,
+    async subjectFor(code) {
+      exchanged.push(code);
+      if (code === "fail")
+        throw new DomainError(502, "OAUTH_PROVIDER_ERROR", "fake outage");
+      const match = /^user-([0-9]+)$/.exec(code);
+      if (!match)
+        throw new DomainError(502, "OAUTH_PROVIDER_ERROR", "bad code");
+      return match[1]!;
+    },
+  };
+}
+let nextSubject = 1000;
 
 function crc32(data: Buffer): number {
   let crc = 0xffffffff;
@@ -65,10 +88,17 @@ export async function context() {
     ASSET_ROOT: assetRoot,
     PUBLIC_ORIGIN: "http://localhost:3001",
   });
-  const built = buildApp({ config, now: () => time, logger: false });
+  const kakao = fakeKakao();
+  const built = buildApp({
+    config,
+    now: () => time,
+    logger: false,
+    oauthProvider: kakao,
+  });
   await built.app.ready();
   return {
     ...built,
+    kakao,
     directory,
     advance: (ms = 1000) => {
       time = new Date(time.getTime() + ms);
@@ -124,13 +154,34 @@ export async function publish(context: Context, styleIds: string[], count = 4) {
   return data;
 }
 export function client(context: Context) {
-  let cookie = "";
+  // Cookie jar: name -> value. "cookie" reads/writes it as a Cookie header string.
+  const jar = new Map<string, string>();
+  const absorb = (header: string | string[] | undefined) => {
+    for (const line of header
+      ? Array.isArray(header)
+        ? header
+        : [header]
+      : []) {
+      const [pair, ...attributes] = line.split(";");
+      const index = pair!.indexOf("=");
+      const name = pair!.slice(0, index).trim();
+      const value = pair!.slice(index + 1).trim();
+      const removed = attributes.some((a) => /^\s*max-age=0\s*$/i.test(a));
+      if (removed || !value) jar.delete(name);
+      else jar.set(name, value);
+    }
+  };
   return {
     get cookie() {
-      return cookie;
+      return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
     },
     set cookie(value: string) {
-      cookie = value;
+      jar.clear();
+      for (const part of value.split(";")) {
+        const index = part.indexOf("=");
+        if (index > 0)
+          jar.set(part.slice(0, index).trim(), part.slice(index + 1).trim());
+      }
     },
     async request(
       method: "GET" | "POST" | "PUT" | "DELETE",
@@ -138,6 +189,7 @@ export function client(context: Context) {
       payload?: unknown,
       extra: Record<string, string> = {},
     ) {
+      const cookie = this.cookie;
       const response = await context.app.inject({
         method,
         url,
@@ -152,12 +204,50 @@ export function client(context: Context) {
         },
         ...(payload !== undefined ? { payload: JSON.stringify(payload)! } : {}),
       });
-      const header = response.headers["set-cookie"];
-      if (header)
-        cookie = (Array.isArray(header) ? header[0]! : header).split(";")[0]!;
+      absorb(response.headers["set-cookie"] as string | string[] | undefined);
       return response;
     },
+    /** Logs in through the fake Kakao; a new member also completes signup with all consents granted. */
+    async login(subject = String(nextSubject++), grantOptional = false) {
+      const start = await this.request("GET", "/api/auth/kakao/start");
+      assert.equal(start.statusCode, 302, start.body);
+      const state = new URL(String(start.headers.location)).searchParams.get(
+        "state",
+      )!;
+      const callback = await this.request(
+        "GET",
+        `/api/auth/kakao/callback?code=user-${subject}&state=${encodeURIComponent(state)}`,
+      );
+      assert.equal(callback.statusCode, 302, callback.body);
+      if (callback.headers.location === "/signup") {
+        const pending = await this.request("GET", "/api/auth/signup/pending");
+        assert.equal(pending.statusCode, 200, pending.body);
+        const documents = pending.json().documents as {
+          key: string;
+          version: number;
+          required: boolean;
+        }[];
+        const signup = await this.request("POST", "/api/auth/signup", {
+          consents: documents.map((d) => ({
+            key: d.key,
+            version: d.version,
+            granted: d.required || grantOptional,
+          })),
+        });
+        assert.equal(signup.statusCode, 201, signup.body);
+      }
+      return subject;
+    },
     async create(): Promise<SessionView> {
+      if (
+        ![...jar.keys()].some(
+          (name) =>
+            name.includes("auth") &&
+            !name.includes("oauth") &&
+            !name.includes("signup"),
+        )
+      )
+        await this.login();
       const response = await this.request(
         "POST",
         "/api/onboarding/session",

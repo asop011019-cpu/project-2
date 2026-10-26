@@ -103,77 +103,71 @@ export class OnboardingService {
       ),
     );
   }
-  private newSession(): { token: string; record: SessionRecord } {
-    const token = randomBytes(32).toString("base64url");
+  private newSession(userId: string): SessionRecord {
     const now = this.now();
     return {
-      token,
-      record: {
-        id: randomUUID(),
-        tokenHash: hashToken(token),
-        selectedCategoryId: null,
-        startedAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-        expiresAt: new Date(
-          now.getTime() + this.ttlSeconds * 1000,
-        ).toISOString(),
-      },
+      id: randomUUID(),
+      // Kept only to satisfy the original schema; the progress is owned by userId.
+      tokenHash: hashToken(randomBytes(32).toString("base64url")),
+      userId,
+      selectedCategoryId: null,
+      startedAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + this.ttlSeconds * 1000).toISOString(),
     };
   }
-  authenticated(token: string | undefined): SessionRecord {
-    if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token))
+  /** Resolves the logged-in user's onboarding progress; the caller has already authenticated the account. */
+  authenticated(sessionId: string | undefined): SessionRecord {
+    const session = sessionId
+      ? this.repository.findSession(sessionId)
+      : undefined;
+    if (!session || !session.userId)
       throw new DomainError(
         401,
         "SESSION_REQUIRED",
-        "유효한 익명 세션 쿠키가 필요해요.",
-      );
-    const session = this.repository.findSession(hashToken(token));
-    if (!session || Date.parse(session.expiresAt) <= this.now().getTime())
-      throw new DomainError(
-        401,
-        "SESSION_REQUIRED",
-        "세션을 복원할 수 없어요. 세션을 새로 시작해 주세요.",
+        "취향 진행을 찾을 수 없어요. 새로 시작해 주세요.",
       );
     return session;
   }
+  sessionIdForUser(userId: string): string | undefined {
+    return this.repository.sessionIdForUser(userId);
+  }
   private withSession<T>(
-    token: string | undefined,
+    sessionId: string | undefined,
     action: (session: SessionRecord) => T,
   ): T {
-    return this.repository.transaction(() => action(this.authenticated(token)));
+    return this.repository.transaction(() =>
+      action(this.authenticated(sessionId)),
+    );
   }
-  create(token?: string): {
-    created: boolean;
-    token?: string;
-    session: SessionView;
-  } {
-    if (token) return { created: false, session: this.restore(token) };
+  ensureForUser(userId: string): { created: boolean; session: SessionView } {
     return this.repository.transaction(() => {
-      const next = this.newSession();
-      this.repository.insertSession(next.record);
-      return {
-        created: true,
-        token: next.token,
-        session: this.view(next.record),
-      };
+      const existing = this.repository.sessionIdForUser(userId);
+      if (existing)
+        return {
+          created: false,
+          session: this.view(this.authenticated(existing)),
+        };
+      const record = this.newSession(userId);
+      this.repository.insertSession(record);
+      return { created: true, session: this.view(record) };
     });
   }
-  restore(token: string | undefined): SessionView {
-    return this.withSession(token, (session) => this.view(session));
+  restore(sessionId: string | undefined): SessionView {
+    return this.withSession(sessionId, (session) => this.view(session));
   }
-  delete(token: string | undefined): void {
+  delete(sessionId: string | undefined): void {
     this.repository.transaction(() => {
-      if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return;
-      const session = this.repository.findSession(hashToken(token));
-      if (session) this.repository.deleteSession(session.id);
+      if (sessionId && this.repository.findSession(sessionId))
+        this.repository.deleteSession(sessionId);
     });
   }
-  reset(token: string | undefined): { token: string; session: SessionView } {
-    return this.withSession(token, (previous) => {
+  reset(sessionId: string | undefined): SessionView {
+    return this.withSession(sessionId, (previous) => {
       this.repository.deleteSession(previous.id);
-      const next = this.newSession();
-      this.repository.insertSession(next.record);
-      return { token: next.token, session: this.view(next.record) };
+      const next = this.newSession(previous.userId!);
+      this.repository.insertSession(next);
+      return this.view(next);
     });
   }
   private touch(session: SessionRecord, now: string): void {
@@ -190,10 +184,10 @@ export class OnboardingService {
     this.touch(session, now);
   }
   selectCategory(
-    token: string | undefined,
+    sessionId: string | undefined,
     categoryId: ClothingCategoryId,
   ): SessionView {
-    return this.withSession(token, (session) => {
+    return this.withSession(sessionId, (session) => {
       const catalog = this.repository.catalog();
       if (!catalog.categories.some((category) => category.id === categoryId))
         throw new DomainError(
@@ -385,12 +379,12 @@ export class OnboardingService {
       );
   }
   respond(
-    token: string | undefined,
+    sessionId: string | undefined,
     styleId: string,
     response: ResponseValue,
     nextStyleId?: string | null,
   ): SessionView {
-    return this.withSession(token, (session) => {
+    return this.withSession(sessionId, (session) => {
       const { category, categoryId, ids, responses } = this.context(session);
       this.assertActive(ids, styleId);
       if (nextStyleId !== undefined && nextStyleId !== null)
@@ -419,12 +413,12 @@ export class OnboardingService {
     });
   }
   preferImage(
-    token: string | undefined,
+    sessionId: string | undefined,
     styleId: string,
     imageId: string,
     selected: boolean,
   ): SessionView {
-    return this.withSession(token, (session) => {
+    return this.withSession(sessionId, (session) => {
       const { category, categoryId, ids, styles } = this.context(session);
       this.assertActive(ids, styleId);
       if (
@@ -457,8 +451,8 @@ export class OnboardingService {
       return this.view(session);
     });
   }
-  position(token: string | undefined, styleId: string | null): SessionView {
-    return this.withSession(token, (session) => {
+  position(sessionId: string | undefined, styleId: string | null): SessionView {
+    return this.withSession(sessionId, (session) => {
       const { category, ids } = this.context(session);
       if (styleId !== null) this.assertActive(ids, styleId);
       if (category.currentStyleId !== styleId) {
@@ -468,8 +462,8 @@ export class OnboardingService {
       return this.view(session);
     });
   }
-  summary(token: string | undefined): SessionSummary {
-    return this.withSession(token, (session) => {
+  summary(sessionId: string | undefined): SessionSummary {
+    return this.withSession(sessionId, (session) => {
       const view = this.view(session);
       const selected = (response: ResponseValue) =>
         new Set(
@@ -503,8 +497,8 @@ export class OnboardingService {
       };
     });
   }
-  complete(token: string | undefined): SessionView {
-    return this.withSession(token, (session) => {
+  complete(sessionId: string | undefined): SessionView {
+    return this.withSession(sessionId, (session) => {
       const { category, ids, responses } = this.context(session);
       assertCompletable(ids.length, answeredCount(ids, responses));
       if (category.status !== "completed") {
@@ -517,8 +511,8 @@ export class OnboardingService {
       return this.view(session);
     });
   }
-  refreshCatalog(token: string | undefined): SessionView {
-    return this.withSession(token, (session) => {
+  refreshCatalog(sessionId: string | undefined): SessionView {
+    return this.withSession(sessionId, (session) => {
       const {
         category,
         categoryId,

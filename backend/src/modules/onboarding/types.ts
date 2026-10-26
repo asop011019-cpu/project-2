@@ -76,7 +76,9 @@ export interface StyleDetail extends StyleSummary {
 }
 export interface SessionRecord {
   id: string;
+  /** Internal random value; since AUTH-002 the owner is userId, not a cookie. */
   tokenHash: string;
+  userId: string | null;
   selectedCategoryId: ClothingCategoryId | null;
   startedAt: string;
   updatedAt: string;

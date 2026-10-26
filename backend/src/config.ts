@@ -9,7 +9,23 @@ export interface AppConfig {
   publicOrigin: string;
   secureCookies: boolean;
   sessionTtlSeconds: number;
+  auth: AuthConfig;
 }
+// Login session lifetimes are adjustable development defaults (AUTH-002), not an approved policy.
+export interface AuthConfig {
+  idleTtlSeconds: number;
+  absoluteTtlSeconds: number;
+  renewAfterSeconds: number;
+  rotationGraceSeconds: number;
+  handshakeTtlSeconds: number;
+  kakao?: { restApiKey: string; clientSecret?: string; redirectUri: string };
+}
+const seconds = (value: string | undefined, fallback: number) =>
+  z.coerce
+    .number()
+    .int()
+    .min(1)
+    .parse(value ?? fallback);
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const production = env.NODE_ENV === "production";
   const origin = new URL(env.PUBLIC_ORIGIN ?? "http://localhost:3001");
@@ -46,5 +62,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     publicOrigin: origin.origin,
     secureCookies: production || origin.protocol === "https:",
     sessionTtlSeconds: 60 * 60 * 24 * 30,
+    auth: {
+      idleTtlSeconds: seconds(env.AUTH_IDLE_TTL_SECONDS, 60 * 60 * 24 * 30),
+      absoluteTtlSeconds: seconds(
+        env.AUTH_ABSOLUTE_TTL_SECONDS,
+        60 * 60 * 24 * 90,
+      ),
+      renewAfterSeconds: seconds(env.AUTH_RENEW_AFTER_SECONDS, 60 * 60 * 24),
+      rotationGraceSeconds: seconds(env.AUTH_ROTATION_GRACE_SECONDS, 60),
+      handshakeTtlSeconds: 600,
+      ...(env.KAKAO_REST_API_KEY
+        ? {
+            kakao: {
+              restApiKey: env.KAKAO_REST_API_KEY,
+              ...(env.KAKAO_CLIENT_SECRET
+                ? { clientSecret: env.KAKAO_CLIENT_SECRET }
+                : {}),
+              redirectUri:
+                env.KAKAO_REDIRECT_URI ??
+                `${origin.origin}/api/auth/kakao/callback`,
+            },
+          }
+        : {}),
+    },
   };
 }

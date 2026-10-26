@@ -4,6 +4,8 @@ GPT가 제품 방향, Codex가 백엔드·통합, Lovable이 화면을 담당한
 
 ## 연결과 인증
 
+> **AUTH-002부터**: 하의는 로그인 계정의 취향 진행에 속함. 로그인 없으면 401 `AUTH_REQUIRED`. 진행이 없는 계정은 GET `{"garment":null}`, image 404, DELETE 204이고, 첫 사진 PUT이 진행을 만듦. 아래 "POST /api/onboarding/session으로 익명 세션" 설명은 로그인 세션으로 대체됨.
+
 기존 `POST /api/onboarding/session {}`로 익명 세션을 만들거나 재사용한다. 모든 호출은 `credentials: 'include'`, 변경 요청은 `X-Onboarding-Request: 1`을 사용한다. 프론트의 `/api`를 Node API(기본 포트 3001)로 같은 출처 프록시하고 `PUBLIC_ORIGIN`을 실제 프론트 출처로 설정한다. CORS는 열지 않는다. Lovable 프로젝트에 API가 자동 배포되거나 GitHub와 동기화된 것으로 가정하지 않는다.
 
 401에서는 입력을 보존하고 사용자가 새 시작을 선택하도록 한다. 재시도에서 세션을 자동 삭제하지 않는다. menswear/womenswear 선택이나 온보딩 완료 전에도 등록 가능하다.

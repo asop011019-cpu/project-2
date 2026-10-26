@@ -197,11 +197,11 @@ test("concurrent replacements keep final image; DB failures preserve previous fi
   assert.deepEqual((await a.request("GET", url + "/image")).rawPayload, bytes);
 });
 
-test("WebP decode, revoked cookies and cross-origin uploads", async (t) => {
+test("WebP decode, reset/deletion/logout and cross-origin uploads", async (t) => {
   const { c, a, put } = await setup(t);
   const webp = await sharp(fixturePng(5)).webp().toBuffer();
   assert.equal((await put(meta, [webp])).statusCode, 200);
-  const old = a.cookie;
+  const login = a.cookie;
   const f = form();
   const denied = await c.app.inject({
     method: "PUT",
@@ -209,34 +209,27 @@ test("WebP decode, revoked cookies and cross-origin uploads", async (t) => {
     payload: f.payload,
     headers: {
       ...f.headers,
-      cookie: old,
+      cookie: login,
       "x-onboarding-request": "1",
       origin: "https://other.example",
     },
   });
   assert.equal(denied.statusCode, 403);
+  const image = () =>
+    c.app.inject({
+      method: "GET",
+      url: url + "/image",
+      headers: { cookie: login },
+    });
   await a.request("POST", "/api/onboarding/session/reset", {});
-  assert.equal(
-    (
-      await c.app.inject({
-        method: "GET",
-        url: url + "/image",
-        headers: { cookie: old },
-      })
-    ).statusCode,
-    401,
-  );
+  assert.equal((await image()).statusCode, 404);
   await put();
-  const current = a.cookie;
   await a.request("DELETE", "/api/onboarding/session");
-  assert.equal(
-    (
-      await c.app.inject({
-        method: "GET",
-        url: url + "/image",
-        headers: { cookie: current },
-      })
-    ).statusCode,
-    401,
-  );
+  assert.equal((await image()).statusCode, 404);
+  await put();
+  assert.equal((await image()).statusCode, 200);
+  await a.request("POST", "/api/auth/logout", {});
+  const after = await image();
+  assert.equal(after.statusCode, 401);
+  assert.equal(after.json().error.code, "AUTH_REQUIRED");
 });

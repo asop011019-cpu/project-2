@@ -10,7 +10,8 @@ import type {
 export interface OnboardingRepository {
   transaction<T>(operation: () => T): T;
   catalog(): CatalogSnapshot;
-  findSession(tokenHash: string): SessionRecord | undefined;
+  findSession(id: string): SessionRecord | undefined;
+  sessionIdForUser(userId: string): string | undefined;
   insertSession(session: SessionRecord): void;
   deleteSession(id: string): void;
   selectCategory(id: string, categoryId: ClothingCategoryId, now: string): void;

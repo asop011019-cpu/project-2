@@ -70,17 +70,25 @@ export class SqliteOnboardingRepository implements OnboardingRepository {
         })) as unknown as CatalogSnapshot["images"],
     };
   }
-  findSession(tokenHash: string): SessionRecord | undefined {
+  findSession(id: string): SessionRecord | undefined {
     return this.db
       .prepare(
-        `SELECT id,token_hash AS tokenHash,selected_category_id AS selectedCategoryId,
-      started_at AS startedAt,updated_at AS updatedAt,expires_at AS expiresAt FROM onboarding_sessions WHERE token_hash=?`,
+        `SELECT id,token_hash AS tokenHash,user_id AS userId,selected_category_id AS selectedCategoryId,
+      started_at AS startedAt,updated_at AS updatedAt,expires_at AS expiresAt FROM onboarding_sessions WHERE id=?`,
       )
-      .get(tokenHash) as unknown as SessionRecord | undefined;
+      .get(id) as unknown as SessionRecord | undefined;
+  }
+  sessionIdForUser(userId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT id FROM onboarding_sessions WHERE user_id=?")
+      .get(userId) as { id: string } | undefined;
+    return row?.id;
   }
   insertSession(s: SessionRecord): void {
     this.db
-      .prepare("INSERT INTO onboarding_sessions VALUES(?,?,?,?,?,?)")
+      .prepare(
+        "INSERT INTO onboarding_sessions(id,token_hash,selected_category_id,started_at,updated_at,expires_at,user_id) VALUES(?,?,?,?,?,?,?)",
+      )
       .run(
         s.id,
         s.tokenHash,
@@ -88,6 +96,7 @@ export class SqliteOnboardingRepository implements OnboardingRepository {
         s.startedAt,
         s.updatedAt,
         s.expiresAt,
+        s.userId,
       );
   }
   deleteSession(id: string): void {

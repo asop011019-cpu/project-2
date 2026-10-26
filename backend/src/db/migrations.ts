@@ -70,9 +70,56 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
    CREATE INDEX style_images_style_idx ON style_images(style_id,position);`,
   migrateGenreClassification,
   `CREATE TABLE garments (session_id TEXT PRIMARY KEY REFERENCES onboarding_sessions(id) ON DELETE CASCADE, id TEXT NOT NULL, garment_type TEXT NOT NULL CHECK(garment_type IN ('pants','skirt')), brand TEXT, product_name TEXT, purchase_url TEXT, filename TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;`,
+  // v4 (AUTH-002): accounts, login sessions and consents. Existing rows are untouched;
+  // pre-existing anonymous onboarding sessions keep user_id NULL and are never attached to an account.
+  `CREATE TABLE users (id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK(status IN ('active','deleting')), created_at TEXT NOT NULL, deleted_at TEXT) STRICT;
+   CREATE TABLE user_identities (
+     id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     provider TEXT NOT NULL CHECK(provider IN ('kakao','email')), provider_subject TEXT NOT NULL,
+     password_hash TEXT, email_verified_at TEXT, created_at TEXT NOT NULL,
+     UNIQUE(provider,provider_subject)
+   ) STRICT;
+   CREATE TABLE auth_sessions (
+     id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
+     previous_token_hash TEXT UNIQUE CHECK(previous_token_hash IS NULL OR length(previous_token_hash)=64),
+     previous_valid_until TEXT, created_at TEXT NOT NULL, authenticated_at TEXT NOT NULL,
+     renewed_at TEXT NOT NULL, idle_expires_at TEXT NOT NULL, absolute_expires_at TEXT NOT NULL,
+     revoked_at TEXT, revoke_reason TEXT
+   ) STRICT;
+   CREATE INDEX auth_sessions_user_idx ON auth_sessions(user_id);
+   CREATE TABLE oauth_states (
+     state_hash TEXT PRIMARY KEY CHECK(length(state_hash)=64), browser_hash TEXT NOT NULL CHECK(length(browser_hash)=64),
+     provider TEXT NOT NULL CHECK(provider IN ('kakao')), return_to TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+   ) STRICT;
+   CREATE TABLE pending_signups (
+     token_hash TEXT PRIMARY KEY CHECK(length(token_hash)=64), provider TEXT NOT NULL CHECK(provider IN ('kakao')),
+     provider_subject TEXT NOT NULL, return_to TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+   ) STRICT;
+   CREATE TABLE consent_documents (
+     key TEXT NOT NULL, version INTEGER NOT NULL CHECK(version>0), required INTEGER NOT NULL CHECK(required IN (0,1)),
+     title TEXT NOT NULL, body TEXT NOT NULL, body_sha256 TEXT NOT NULL, effective_at TEXT NOT NULL,
+     PRIMARY KEY(key,version)
+   ) STRICT;
+   CREATE TABLE user_consents (
+     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL, version INTEGER NOT NULL,
+     granted INTEGER NOT NULL CHECK(granted IN (0,1)), decided_at TEXT NOT NULL,
+     PRIMARY KEY(user_id,key), FOREIGN KEY(key,version) REFERENCES consent_documents(key,version)
+   ) STRICT;
+   CREATE TABLE consent_events (
+     id INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL,
+     version INTEGER NOT NULL, granted INTEGER NOT NULL CHECK(granted IN (0,1)), decided_at TEXT NOT NULL,
+     FOREIGN KEY(key,version) REFERENCES consent_documents(key,version)
+   ) STRICT;
+   ALTER TABLE onboarding_sessions ADD COLUMN user_id TEXT REFERENCES users(id);
+   CREATE UNIQUE INDEX onboarding_sessions_user_idx ON onboarding_sessions(user_id) WHERE user_id IS NOT NULL;`,
 ];
 
-export function migrate(db: DatabaseSync): void {
+/** Applies pending migrations; `target` (tests only) stops at an older schema version. */
+export function migrate(
+  db: DatabaseSync,
+  target: number = migrations.length,
+): void {
   const current = Number(
     db.prepare("PRAGMA user_version").get()!["user_version"],
   );
@@ -80,7 +127,11 @@ export function migrate(db: DatabaseSync): void {
     throw new Error(
       "Database version is newer than this backend; refusing to overwrite it.",
     );
-  for (let index = current; index < migrations.length; index++) {
+  for (
+    let index = current;
+    index < Math.min(target, migrations.length);
+    index++
+  ) {
     db.exec("BEGIN IMMEDIATE");
     try {
       const migration = migrations[index]!;

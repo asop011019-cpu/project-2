@@ -75,9 +75,23 @@
 10. 같은 이메일의 이메일 계정과 카카오 계정이 자동으로 합쳐지지 않음.
 11. 기존 익명 세션 쿠키만 있는 브라우저 → 401, 기존 익명 데이터는 어떤 계정에도 붙지 않음.
 
+## 9-1. AUTH-002 검토 보완 (총괄 지시 반영, 구현은 `docs/AUTH-002.md`)
+- **동의문 본문**: 제목만으로 동의 불가. `GET /api/auth/consent-documents`(현재 버전 전체, `body` 포함)와 `GET /api/auth/consent-documents/:key/:version`. 발행된 (key, version) 본문은 서버 시작 시 SHA-256으로 대조해 바뀌면 기동 거부 → 문안 수정은 새 버전으로만.
+- **버전 검증·재동의**: 가입·변경 요청의 version이 현재 버전과 다르면 409 `CONSENT_VERSION_MISMATCH`. 필수 누락 400 `CONSENT_REQUIRED`. 필수 문서 새 버전이 시행되면 보호 API는 403 `CONSENT_UPDATE_REQUIRED`, `/me`는 200으로 `consentUpdates:[{key,version}]`를 알려 주고, `PUT /api/auth/consents {key,version,granted:true}` 후 해제. 필수 철회는 400 `REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN`. 모든 결정은 `consent_events`에 누적.
+- **OAuth state**: state 원문은 카카오 URL에만, 서버엔 해시. 시작 브라우저에 별도 난수(`auth-oauth` 쿠키, 해시 저장)를 묶어 콜백에서 둘 다 일치해야 통과. `DELETE … RETURNING`으로 원자적 1회 소비(실패 시도도 소비). 10분 만료.
+- **returnTo**: `/`로 시작하는 같은 사이트 상대 경로만. `//`, `\`, 스킴, 제어문자, `/api/` 경로는 `/`로 대체.
+- **동시 갱신**: 토큰 교체 시 직전 토큰을 `rotationGraceSeconds`(기본 60초) 동안 계속 인정 → 같은 쿠키로 동시에 온 요청이 로그아웃되지 않음. 갱신은 교체한 응답에만 새 쿠키.
+- **30/90일**: `AUTH_IDLE_TTL_SECONDS`·`AUTH_ABSOLUTE_TTL_SECONDS`·`AUTH_RENEW_AFTER_SECONDS`·`AUTH_ROTATION_GRACE_SECONDS`로 조정하는 **개발용 임시 기본값**. 사용자 확정·운영 정책 아님. 미사용 기간은 하루 1회 갱신 시점 기준(최대 하루 오차).
+- **AUTH-004 탈퇴 삭제 순서(설계 보완, 미구현)**: 기존 5장 순서(세션 전부 폐기 → 파일 삭제 → …)는 파일 삭제가 실패하면 로그인 수단이 없어 재시도 불가, 행을 먼저 지우면 카카오 연결 끊기에 필요한 회원번호가 사라지는 위험이 있음. 보완안:
+  1. 최근 인증 확인 → `users.status='deleting'`, 신규 로그인·가입 차단(콜백은 `ACCOUNT_UNAVAILABLE`), 현재 세션 외 모든 세션 폐기.
+  2. 삭제 작업 행(`account_deletions`: user_id, kakao 회원번호, 단계, 시도 횟수, 마지막 오류)을 먼저 기록 — 이후 단계는 이 행만으로 재시도 가능(로그인 불필요, 서버 재시작 후 재개).
+  3. 하의 사진 파일 삭제(없으면 성공으로 간주) → 4. 취향·하의·동의·세션·로그인 수단·계정 행 삭제 → 5. 카카오 연결 끊기(실패 시 작업 행에 남겨 재시도) → 6. 모든 단계 성공 시 작업 행에서 회원번호 지움(완료 기록만 남김).
+  - 사용자 응답은 1~2단계 커밋 후 202/204 + 로그아웃. 남은 단계는 서버가 재시도.
+- 시나리오 8(탈퇴)은 AUTH-002 완료 기준에서 제외(미구현).
+
 ## 10. AUTH Work List (총괄 Work List 반영용)
 - [x] AUTH-001 계약 설계(이 문서) — 미구현·미시험.
-- [ ] AUTH-002 백엔드 카카오 최소 구현: 마이그레이션(users·identities·auth_sessions·consent·onboarding_sessions.user_id), start/callback(가짜 카카오 서버로 테스트), signup·me·logout·logout-all, 기존 onboarding/garment 경로 인증 필수화, 시나리오 1~8·10·11 자동 테스트. 선행: 카카오 개발자 앱 키(사용자).
+- [x] AUTH-002 백엔드 카카오 최소 구현(`docs/AUTH-002.md`, 실제 카카오 미검증): 마이그레이션(users·identities·auth_sessions·consent·onboarding_sessions.user_id), start/callback(가짜 카카오 서버로 테스트), signup·me·logout·logout-all, 기존 onboarding/garment 경로 인증 필수화, 시나리오 1~8·10·11 자동 테스트. 선행: 카카오 개발자 앱 키(사용자).
 - [ ] AUTH-003 프론트(Lovable): 로그인·가입 동의·로그아웃·탈퇴 화면, 401 시 로그인 이동. 선행: AUTH-002 계약 고정.
 - [ ] AUTH-004 탈퇴·삭제 완성: 재인증, 파일 삭제 재시도, 카카오 연결 끊기, 시나리오 8.
 - [ ] AUTH-005 이메일+비밀번호(6장): 해시·인증·재설정·시도 제한. 선행: 메일 발송 서비스 결정.

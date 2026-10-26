@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { context, client, publish } from "./helpers.ts";
+import { context, client, publish, fakeKakao } from "./helpers.ts";
 import { buildApp } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 const base = "/api/onboarding/session";
@@ -102,9 +102,13 @@ test("mutations require the explicit request header and reject cross-site origin
     0,
   );
   result = await user.request("POST", base, {});
+  assert.equal(result.statusCode, 401);
+  assert.equal(result.json().error.code, "AUTH_REQUIRED");
+  await user.login();
+  result = await user.request("POST", base, {});
   assert.equal(result.statusCode, 201);
-  assert.ok(String(result.headers["set-cookie"]).includes("HttpOnly"));
-  assert.ok(String(result.headers["set-cookie"]).includes("SameSite=Strict"));
+  // Progress is owned by the login; onboarding no longer issues its own cookie.
+  assert.equal(result.headers["set-cookie"], undefined);
   assert.equal(result.headers["access-control-allow-origin"], undefined);
   assert.equal(result.headers["cache-control"], "no-store");
 });
@@ -126,24 +130,31 @@ test("production requires HTTPS and sets host-only Secure HttpOnly cookies", asy
     publicOrigin: "https://example.test",
     databasePath: ":memory:",
   };
-  const { app } = buildApp({ config, logger: false });
-  t.after(() => app.close());
-  const result = await app.inject({
-    method: "POST",
-    url: base,
-    headers: { "x-onboarding-request": "1", origin: config.publicOrigin },
-    payload: {},
-  });
+  const secure = {
+    ...c,
+    ...buildApp({ config, logger: false, oauthProvider: fakeKakao() }),
+  };
+  t.after(() => secure.app.close());
+  const user = client(secure);
+  const start = await user.request("GET", "/api/auth/kakao/start");
+  const binder = String(start.headers["set-cookie"]);
+  assert.ok(binder.startsWith("__Host-auth-oauth="));
+  await user.login();
+  const result = await user.request("POST", base, {});
   assert.equal(result.statusCode, 201);
-  const header = String(result.headers["set-cookie"]);
-  assert.ok(header.startsWith("__Host-onboarding="));
-  assert.ok(header.includes("Secure"));
-  assert.ok(header.includes("HttpOnly"));
-  assert.ok(header.includes("Path=/"));
-  assert.ok(!header.includes("Domain="));
+  const login = await user.request("GET", "/api/auth/me");
+  assert.equal(login.statusCode, 200);
+  assert.ok(user.cookie.includes("__Host-auth="));
+  for (const header of [binder]) {
+    assert.ok(header.includes("Secure"));
+    assert.ok(header.includes("HttpOnly"));
+    assert.ok(header.includes("Path=/"));
+    assert.ok(header.includes("SameSite=Lax"));
+    assert.ok(!header.includes("Domain="));
+  }
 });
 
-test("reset rotates the token, deletion cascades only the owner, and invalid-cookie deletion is idempotent", async (t) => {
+test("reset and deletion replace only the owner's progress; the login survives and deletion is idempotent", async (t) => {
   const c = await context();
   t.after(c.cleanup);
   await publish(c, ["men_casual"]);
@@ -160,16 +171,11 @@ test("reset rotates the token, deletion cascades only the owner, and invalid-coo
     `${base}/styles/men_casual/images/fixture_men_casual_0/preference`,
     { selected: true },
   );
-  const old = alice.cookie;
+  const login = alice.cookie;
   const reset = await alice.request("POST", `${base}/reset`, {});
   assert.equal(reset.statusCode, 200);
-  assert.notEqual(alice.cookie, old);
+  assert.equal(alice.cookie, login);
   assert.equal(reset.json().selectedCategoryId, null);
-  assert.equal(
-    (await c.app.inject({ method: "GET", url: base, headers: { cookie: old } }))
-      .statusCode,
-    401,
-  );
   for (const table of [
     "category_sessions",
     "session_styles",
@@ -180,32 +186,25 @@ test("reset rotates the token, deletion cascades only the owner, and invalid-coo
       c.db.prepare(`SELECT count(*) AS count FROM ${table}`).get()!["count"],
       0,
     );
-  const current = alice.cookie;
   let result = await alice.request("DELETE", base, {});
   assert.equal(result.statusCode, 204);
-  assert.ok(String(result.headers["set-cookie"]).includes("Max-Age=0"));
-  assert.equal(
-    (
-      await c.app.inject({
-        method: "GET",
-        url: base,
-        headers: { cookie: current },
-      })
-    ).statusCode,
-    401,
-  );
+  result = await alice.request("GET", base);
+  assert.equal(result.statusCode, 401);
+  assert.equal(result.json().error.code, "SESSION_REQUIRED");
+  assert.equal((await alice.request("GET", "/api/auth/me")).statusCode, 200);
   result = await alice.request("DELETE", base, {});
   assert.equal(result.statusCode, 204);
+  assert.equal((await alice.request("POST", base, {})).statusCode, 201);
   assert.equal((await bob.request("GET", base)).statusCode, 200);
 });
 
-test("expiry fails authentication without trusting a public session ID", async (t) => {
+test("login expiry fails authentication without trusting a public session ID", async (t) => {
   const c = await context();
   t.after(c.cleanup);
   const user = client(c);
   await user.create();
-  c.advance(c.config.sessionTtlSeconds * 1000 + 1);
+  c.advance(c.config.auth.idleTtlSeconds * 1000 + 1);
   const result = await user.request("GET", base);
   assert.equal(result.statusCode, 401);
-  assert.equal(result.json().error.code, "SESSION_REQUIRED");
+  assert.equal(result.json().error.code, "AUTH_REQUIRED");
 });
