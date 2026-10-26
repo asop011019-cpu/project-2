@@ -981,6 +981,7 @@ a:focus-visible {
     margin-top: 0;
   }
   .explore-section .swipe-cover {
+    --cover-max: min(470px, 52svh);
     height: min(470px, 52svh);
   }
   .response-controls {
