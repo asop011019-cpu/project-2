@@ -1,0 +1,380 @@
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
+import { ApiError } from "@/lib/onboarding-api";
+import {
+  authMessage,
+  getMe,
+  getPending,
+  getConsentDocuments,
+  signup,
+  putConsent,
+  logout,
+  deleteAccount,
+  startKakao,
+} from "@/lib/auth-api";
+import { safeReturnTo } from "@/lib/auth-routing";
+import { clearAuthDrafts } from "@/lib/auth-drafts";
+import { AuthShell } from "./AuthShell";
+import { ConsentFields } from "./ConsentFields";
+import { requiredAccepted } from "@/lib/auth-consent";
+
+function move(path: string) {
+  window.dispatchEvent(new CustomEvent("auth-navigation", { detail: safeReturnTo(path) }));
+}
+function useReturnTo() {
+  const [target, setTarget] = useState("/");
+  useEffect(() => {
+    setTarget(safeReturnTo(new URLSearchParams(window.location.search).get("returnTo")));
+  }, []);
+  return target;
+}
+function ErrorNotice({ error }: { error: unknown }) {
+  return error ? (
+    <p role="alert" className="auth-error">
+      {authMessage(error)}
+    </p>
+  ) : null;
+}
+
+export function LoginPage() {
+  const returnTo = useReturnTo();
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setError(new URLSearchParams(window.location.search).get("error"));
+  }, []);
+  return (
+    <AuthShell title="카카오로 시작하기">
+      <p className="text-muted-foreground mb-8">로그인하고 내 취향과 하의 기록을 이어가세요.</p>
+      <ErrorNotice error={error} />
+      <Button className="kakao-button w-full" onClick={() => startKakao(returnTo)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 3C6.5 3 2 6.5 2 10.8c0 2.8 1.9 5.2 4.8 6.6l-1.1 4 4.7-2.8 1.6.1c5.5 0 10-3.5 10-7.9S17.5 3 12 3Z"
+          />
+        </svg>
+        카카오로 시작하기
+      </Button>
+      <Link to="/privacy" className="block mt-8 text-sm text-muted-foreground underline">
+        개인정보 처리방침
+      </Link>
+    </AuthShell>
+  );
+}
+
+export function SignupPage() {
+  const returnTo = useReturnTo();
+  const query = useQuery({ queryKey: ["auth", "pending"], queryFn: getPending, retry: false });
+  const [values, setValues] = useState<Record<string, boolean>>({});
+  const mutation = useMutation({
+    mutationFn: signup,
+    onSuccess: (data) => move(data.returnTo),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "CONSENT_VERSION_MISMATCH") {
+        setValues({});
+        void query.refetch();
+      }
+    },
+  });
+  const documents = query.data?.documents ?? [];
+  const error = mutation.error ?? query.error;
+  const expired =
+    error instanceof ApiError && (error.status === 410 || error.code === "IDENTITY_ALREADY_LINKED");
+  return (
+    <AuthShell title="가입 동의">
+      <ErrorNotice error={error} />
+      {query.isPending ? (
+        <p role="status">동의 문서를 불러오는 중이에요.</p>
+      ) : (
+        <ConsentFields
+          documents={documents}
+          values={values}
+          onChange={setValues}
+          disabled={mutation.isPending || expired}
+        />
+      )}
+      {expired ? (
+        <Button className="mt-8 w-full" onClick={() => startKakao(returnTo)}>
+          다시 로그인
+        </Button>
+      ) : (
+        <>
+          <Button
+            className="mt-8 w-full"
+            disabled={
+              !requiredAccepted(documents, values) || mutation.isPending || query.isFetching
+            }
+            onClick={() =>
+              mutation.mutate(
+                documents.map((d) => ({
+                  key: d.key,
+                  version: d.version,
+                  granted: values[d.key] === true,
+                })),
+              )
+            }
+          >
+            {mutation.isPending ? "가입 중…" : "동의하고 가입하기"}
+          </Button>
+          {query.isError && (
+            <Button variant="outline" className="mt-3 w-full" onClick={() => void query.refetch()}>
+              문서 다시 불러오기
+            </Button>
+          )}
+        </>
+      )}
+    </AuthShell>
+  );
+}
+
+export function ConsentUpdatePage() {
+  const returnTo = useReturnTo();
+  const me = useQuery({ queryKey: ["auth", "me"], queryFn: getMe, retry: false });
+  const docs = useQuery({
+    queryKey: ["auth", "documents"],
+    queryFn: getConsentDocuments,
+    retry: false,
+  });
+  const qc = useQueryClient();
+  const [values, setValues] = useState<Record<string, boolean>>({});
+  const documents = (docs.data?.documents ?? []).filter(
+    (d) => d.required && me.data?.consentUpdates.some((u) => u.key === d.key),
+  );
+  const mutation = useMutation({
+    mutationFn: async () => {
+      let latest = me.data;
+      for (const d of documents) {
+        latest = await putConsent({ key: d.key, version: d.version, granted: true });
+        qc.setQueryData(["auth", "me"], latest);
+      }
+      return latest;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["auth", "me"], data);
+      if (!data?.consentUpdates.length) move(returnTo);
+      else {
+        setValues({});
+        void docs.refetch();
+      }
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "CONSENT_VERSION_MISMATCH") {
+        setValues({});
+        void docs.refetch();
+        void me.refetch();
+      }
+    },
+  });
+  useEffect(() => {
+    if (me.data && docs.data && !me.data.consentUpdates.length) move(returnTo);
+  }, [me.data, docs.data, returnTo]);
+  return (
+    <AuthShell title="변경된 필수 동의">
+      <ErrorNotice error={mutation.error ?? me.error ?? docs.error} />
+      {me.isPending || docs.isPending ? (
+        <p role="status">동의 문서를 불러오는 중이에요.</p>
+      ) : (
+        <ConsentFields
+          documents={documents}
+          values={values}
+          onChange={setValues}
+          disabled={mutation.isPending}
+        />
+      )}
+      <Button
+        className="mt-8 w-full"
+        disabled={
+          !requiredAccepted(documents, values) ||
+          mutation.isPending ||
+          docs.isFetching ||
+          me.isFetching
+        }
+        onClick={() => mutation.mutate()}
+      >
+        동의하고 계속하기
+      </Button>
+      {(me.isError || docs.isError) && (
+        <Button
+          variant="outline"
+          className="mt-3 w-full"
+          onClick={() => {
+            void me.refetch();
+            void docs.refetch();
+          }}
+        >
+          다시 시도
+        </Button>
+      )}
+    </AuthShell>
+  );
+}
+
+export function AccountPage() {
+  const me = useQuery({ queryKey: ["auth", "me"], queryFn: getMe, retry: false });
+  const docs = useQuery({
+    queryKey: ["auth", "documents"],
+    queryFn: getConsentDocuments,
+    retry: false,
+  });
+  const qc = useQueryClient();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reauth, setReauth] = useState(false);
+  useEffect(() => {
+    setDeleteOpen(new URLSearchParams(window.location.search).get("confirmDelete") === "1");
+  }, []);
+  useEffect(() => {
+    if (me.data?.consentUpdates.length)
+      move("/consent-update?returnTo=" + encodeURIComponent("/account" + window.location.search));
+  }, [me.data]);
+  const finish = (deleted: boolean) => {
+    qc.clear();
+    clearAuthDrafts();
+    window.dispatchEvent(new CustomEvent("auth-finished", { detail: deleted }));
+  };
+  const out = useMutation({ mutationFn: logout, onSuccess: () => finish(false) });
+  const remove = useMutation({
+    mutationFn: deleteAccount,
+    onSuccess: () => finish(true),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "REAUTH_REQUIRED") {
+        setDeleteOpen(false);
+        setReauth(true);
+      }
+    },
+  });
+  const consent = useMutation({
+    mutationFn: putConsent,
+    onSuccess: (data) => qc.setQueryData(["auth", "me"], data),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "CONSENT_VERSION_MISMATCH") {
+        void docs.refetch();
+        void me.refetch();
+      }
+    },
+  });
+  const busy = out.isPending || remove.isPending || consent.isPending;
+  const ai = docs.data?.documents.find((d) => d.key === "ai_analysis");
+  return (
+    <AuthShell title="내 계정">
+      <ErrorNotice error={out.error ?? remove.error ?? consent.error ?? me.error ?? docs.error} />
+      {me.isPending ? (
+        <p role="status">계정을 불러오는 중이에요.</p>
+      ) : me.data ? (
+        <>
+          <section className="auth-section">
+            <h2 className="font-bold mb-4">로그인 수단</h2>
+            <p>카카오</p>
+          </section>
+          <section className="auth-section">
+            <h2 className="font-bold mb-5">동의 현황</h2>
+            {(docs.data?.documents ?? []).map((d) => (
+              <div key={d.key} className="mb-5">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm">
+                    {d.title}{" "}
+                    <span className="text-muted-foreground">({d.required ? "필수" : "선택"})</span>
+                  </span>
+                  {d.key === "ai_analysis" ? (
+                    <Switch
+                      aria-label={d.title}
+                      disabled={busy || !ai}
+                      checked={me.data.user.consents[d.key]?.granted === true}
+                      onCheckedChange={(granted) =>
+                        consent.mutate({ key: d.key, version: d.version, granted })
+                      }
+                    />
+                  ) : (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {me.data.user.consents[d.key]?.granted ? "동의함" : "미동의"}
+                    </span>
+                  )}
+                </div>
+                <details className="mt-2">
+                  <summary className="text-xs text-muted-foreground cursor-pointer">
+                    본문 펼쳐 보기
+                  </summary>
+                  <div className="auth-document-body">{d.body}</div>
+                </details>
+              </div>
+            ))}
+          </section>
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={busy}
+              onClick={() => out.mutate(false)}
+            >
+              로그아웃
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={busy}
+              onClick={() => out.mutate(true)}
+            >
+              모든 기기에서 로그아웃
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full text-destructive"
+              disabled={busy}
+              onClick={() => {
+                setReauth(false);
+                setDeleteOpen(true);
+              }}
+            >
+              회원 탈퇴
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Button variant="outline" onClick={() => void me.refetch()}>
+          다시 시도
+        </Button>
+      )}
+      {reauth && (
+        <div className="mt-6">
+          <p role="alert" className="mb-3">
+            보안을 위해 카카오로 다시 로그인해 주세요.
+          </p>
+          <Button
+            className="kakao-button w-full"
+            onClick={() => startKakao("/account?confirmDelete=1", true)}
+          >
+            카카오로 다시 로그인
+          </Button>
+        </div>
+      )}
+      <AlertDialog open={deleteOpen && !!me.data} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>정말 탈퇴하시겠어요?</AlertDialogTitle>
+            <AlertDialogDescription>
+              계정, 취향 기록, 하의 사진·정보가 삭제되며 되돌릴 수 없어요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ErrorNotice error={remove.error} />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>취소</AlertDialogCancel>
+            <Button variant="destructive" disabled={busy} onClick={() => remove.mutate()}>
+              {remove.isPending ? "삭제 중…" : "탈퇴하기"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AuthShell>
+  );
+}

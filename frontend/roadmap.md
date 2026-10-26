@@ -17,3 +17,7 @@
 
 # ONB-004-R1
 - [x] All genre cards browsable (read-only detail outside order/offline); serialized position queue.
+
+# AUTH-003
+- [x] Implement existing Kakao API screens, access/error routing and preserved drafts.
+- [x] Run all regression tests, lint and targeted mobile verification; real Kakao/backend checks unavailable in preview.

@@ -1,3 +1,5 @@
+import { announceAuthError } from "./auth-routing";
+
 /**
  * 기준 하의 온보딩 API 클라이언트.
  *
@@ -118,7 +120,9 @@ export async function request<T>(path: string, init: RequestInit): Promise<T> {
     throw new ApiError({ status: 0, code: "NETWORK_ERROR", message: "" });
   }
   if (!res.ok) {
-    throw await parseErrorResponse(res);
+    const error = await parseErrorResponse(res);
+    announceAuthError(error.status, error.code);
+    throw error;
   }
   if (res.status === 204) {
     return undefined as T;

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { AccountLink } from "@/components/auth/AuthShell";
+import { readAuthDraft, writeAuthDraft } from "@/lib/auth-drafts";
 
 import {
   AlertDialog,
@@ -77,7 +79,24 @@ function applyIssues(
   if (Object.keys(fieldErrors).length > 0) setFieldErrors(fieldErrors);
 }
 
-export function GarmentScreen() {
+export function GarmentScreen({
+  authReady = true,
+  preserveDraft = false,
+}: {
+  authReady?: boolean;
+  preserveDraft?: boolean;
+}) {
+  const draft = useRef(
+    preserveDraft
+      ? readAuthDraft<{
+          localFile: File | null;
+          garmentType: GarmentType | null;
+          brand: string;
+          productName: string;
+          purchaseUrl: string;
+        }>("garment")
+      : undefined,
+  ).current;
   const queryClient = useQueryClient();
 
   const [saved, setSaved] = useState<Garment | null>(null);
@@ -120,11 +139,26 @@ export function GarmentScreen() {
       if (previewRef.current) URL.revokeObjectURL(previewRef.current);
     };
   }, []);
+  useEffect(() => {
+    if (!draft) return;
+    touchedRef.current = true;
+    setLocalFile(draft.localFile);
+    if (draft.localFile) setPreview(URL.createObjectURL(draft.localFile));
+    setGarmentType(draft.garmentType);
+    setBrand(draft.brand);
+    setProductName(draft.productName);
+    setPurchaseUrl(draft.purchaseUrl);
+  }, [draft]);
+  useEffect(() => {
+    if (preserveDraft && touchedRef.current)
+      writeAuthDraft("garment", { localFile, garmentType, brand, productName, purchaseUrl });
+  }, [localFile, garmentType, brand, productName, purchaseUrl, preserveDraft]);
 
   const restoreQuery = useQuery({
     queryKey: RESTORE_QUERY_KEY,
     retry: false,
     staleTime: Infinity,
+    enabled: authReady,
     queryFn: async () => {
       await ensureSession();
       return getGarment();
@@ -148,7 +182,11 @@ export function GarmentScreen() {
 
   // 복원 단계의 401도 자동 초기화하지 않고 명시적 선택을 받는다
   useEffect(() => {
-    if (restoreQuery.error instanceof ApiError && restoreQuery.error.status === 401) {
+    if (
+      restoreQuery.error instanceof ApiError &&
+      restoreQuery.error.status === 401 &&
+      restoreQuery.error.code === "SESSION_REQUIRED"
+    ) {
       setSessionExpired(true);
     }
   }, [restoreQuery.error]);
@@ -190,6 +228,11 @@ export function GarmentScreen() {
   };
 
   const handleApiFailure = (kind: ActionError["kind"], e: unknown) => {
+    if (
+      e instanceof ApiError &&
+      (e.code === "AUTH_REQUIRED" || e.code === "CONSENT_UPDATE_REQUIRED")
+    )
+      return;
     if (e instanceof ApiError && e.status === 401) {
       // 입력·선택 파일은 그대로 두고, 자동 재생성 없이 명시적 선택을 받는다
       setSessionExpired(true);
@@ -262,7 +305,7 @@ export function GarmentScreen() {
     },
   });
 
-  const restoring = restoreQuery.isPending && !touchedRef.current;
+  const restoring = authReady && restoreQuery.isPending && !touchedRef.current;
   const restoreFailed =
     restoreQuery.isError &&
     !sessionExpired &&
@@ -333,6 +376,9 @@ export function GarmentScreen() {
       />
       <div className="relative mx-auto w-full max-w-[1200px] px-5 pb-36 pt-9 lg:px-10 lg:pb-16 lg:pt-14">
         <header className="animate-rise">
+          <div className="flex justify-end">
+            <AccountLink />
+          </div>
           <p className="flex items-center gap-2 text-xs font-bold tracking-[0.22em] text-primary">
             <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
             NEXT · 기준 하의

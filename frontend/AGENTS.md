@@ -11,6 +11,9 @@
 
 ## Architecture rules
 
+- Auth is an external same-origin HttpOnly-cookie API in `auth-api.ts`, not a new auth service: AUTH_REQUIRED routes to login with a sanitized returnTo; CONSENT_UPDATE_REQUIRED routes to reconsent, while SESSION_REQUIRED keeps explicit reset UX. Why: identity and progress expiry are separate server-owned states.
+- Auth navigation is client-side via the root event adapter, with memory-only onboarding and garment drafts (including File objects) cleared on logout/deletion; OAuth alone uses location.assign. Why: auth errors must not discard input or expose photos/cookies in browser storage.
+
 - The base-garment onboarding API contract lives in `src/lib/onboarding-api.ts`: same-origin `/api`, `credentials: "include"`, `X-Onboarding-Request: 1` header on mutations only, and never set `Content-Type` manually on FormData requests. Why: the backend rejects requests missing the header and relies on the browser-set multipart boundary.
 - A 401 (SESSION_REQUIRED) must never trigger automatic session recreation or deletion; the UI keeps user input and only calls `resetSession()` (DELETE then POST session) after the user explicitly confirms "새로 시작". Why: the backend returns 401 for stale cookies and does not auto-initialize; silently resetting would discard the user's saved garment.
 - Client-side image checks in `src/lib/image-check.ts` (format sniffing, 10MiB, 40M pixels, HEIC/animation rejection) are advisory only — the server is the final authority. Why: the contract states the backend makes the final validation decision.

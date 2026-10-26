@@ -11,6 +11,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import { SITE } from "@/lib/site";
+import { AuthNavigation } from "@/components/auth/AuthNavigation";
 import { Button } from "@/components/ui/button";
 import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
@@ -118,6 +119,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
+      <AuthNavigation />
       <Toaster />
     </QueryClientProvider>
   );

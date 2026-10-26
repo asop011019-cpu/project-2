@@ -13,7 +13,7 @@ export function IntroScreen({ onStart }: { onStart: () => void }) {
       <div className="intro-shade" aria-hidden="true" />
       <div className="intro-shade-top" aria-hidden="true" />
       <div className="intro-shade-bottom" aria-hidden="true" />
-      <span className="intro-ai">AI 생성 이미지</span>
+
       <div className="intro-composition">
         <h1 aria-label="입고 싶은 가능성" className="intro-title">
           <span aria-hidden="true">입고 싶은</span>

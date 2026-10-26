@@ -15,6 +15,8 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/onboarding-api";
+import { AccountLink } from "@/components/auth/AuthShell";
+import { readAuthDraft, writeAuthDraft } from "@/lib/auth-drafts";
 import { CLOTHING_CATEGORIES, styleCountFor, type CategoryId } from "@/lib/onboarding-catalog";
 import {
   completeSession,
@@ -62,19 +64,34 @@ const FOCUS =
 export function OnboardingScreen({
   onComplete,
   showIntro = false,
+  onBeforeStart,
 }: {
   onComplete: () => void;
   showIntro?: boolean;
+  onBeforeStart?: () => Promise<boolean>;
 }) {
+  const draft = useRef(
+    onBeforeStart
+      ? readAuthDraft<{
+          step: Step;
+          previewCategory: CategoryId | null;
+          openGenre: string | null;
+          viewStyleId: string | null;
+          intro: boolean;
+        }>("onboarding")
+      : undefined,
+  ).current;
   const [intro, setIntro] = useState(showIntro);
   const { curtain, transition } = useCurtain();
   const [notice, setNotice] = useState<string | null>(null);
   const qc = useQueryClient();
-  const [step, setActualStep] = useState<Step>("category");
+  const [step, setActualStep] = useState<Step>(draft?.step ?? "category");
   const setStep = (next: Step) => transition(() => setActualStep(next));
-  const [previewCategory, setPreviewCategory] = useState<CategoryId | null>(null);
-  const [openGenre, setOpenGenre] = useState<string | null>(null);
-  const [viewStyleId, setViewStyleId] = useState<string | null>(null);
+  const [previewCategory, setPreviewCategory] = useState<CategoryId | null>(
+    draft?.previewCategory ?? null,
+  );
+  const [openGenre, setOpenGenre] = useState<string | null>(draft?.openGenre ?? null);
+  const [viewStyleId, setViewStyleId] = useState<string | null>(draft?.viewStyleId ?? null);
   const [zoom, setZoom] = useState<StyleImage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
@@ -86,10 +103,15 @@ export function OnboardingScreen({
     queryFn: createSession,
     retry: false,
     staleTime: Infinity,
+    enabled: !intro,
   });
   const session = sessionQuery.data ?? null;
   const sessionError = sessionQuery.error;
-  const is401 = expired || (sessionError instanceof ApiError && sessionError.status === 401);
+  const is401 =
+    expired ||
+    (sessionError instanceof ApiError &&
+      sessionError.status === 401 &&
+      sessionError.code === "SESSION_REQUIRED");
   const online = session !== null && !is401;
   const offline = !online && !sessionQuery.isPending;
 
@@ -114,6 +136,11 @@ export function OnboardingScreen({
   const setSession = (s: SessionView) => qc.setQueryData(SESSION_KEY, s);
 
   const handleError = (e: unknown) => {
+    if (
+      e instanceof ApiError &&
+      (e.code === "AUTH_REQUIRED" || e.code === "CONSENT_UPDATE_REQUIRED")
+    )
+      return;
     const d = describeOnboardingError(e);
     if (d.action === "expired") {
       setExpired(true);
@@ -227,6 +254,11 @@ export function OnboardingScreen({
     onError: (e, styleId) => {
       queuedPosition.current = null;
       setQueuedView(null);
+      if (
+        e instanceof ApiError &&
+        (e.code === "AUTH_REQUIRED" || e.code === "CONSENT_UPDATE_REQUIRED")
+      )
+        return;
       const d = describeOnboardingError(e);
       if (d.action === "expired") {
         setExpired(true);
@@ -372,14 +404,35 @@ export function OnboardingScreen({
   }, [notice]);
 
   const stepIndex = step === "category" ? "01" : step === "explore" ? "02" : "03";
+  useEffect(() => {
+    if (onBeforeStart)
+      writeAuthDraft("onboarding", { step, previewCategory, openGenre, viewStyleId, intro });
+  }, [step, previewCategory, openGenre, viewStyleId, intro, onBeforeStart]);
+  useEffect(() => {
+    if (showIntro && new URLSearchParams(window.location.search).get("explore") === "1") {
+      if (onBeforeStart)
+        void onBeforeStart().then((ok) => {
+          if (ok) setIntro(false);
+        });
+    }
+  }, [showIntro, onBeforeStart]);
 
   return (
     <main className="min-h-screen bg-background text-foreground">
       {intro ? (
-        <IntroScreen onStart={() => transition(() => setIntro(false))} />
+        <IntroScreen
+          onStart={() => {
+            if (onBeforeStart)
+              void onBeforeStart().then((ok) => {
+                if (ok) transition(() => setIntro(false));
+              });
+            else transition(() => setIntro(false));
+          }}
+        />
       ) : (
         <div className="onboarding-shell">
           <header className="onboarding-header items-center">
+            <AccountLink />
             <span className="onboarding-header-start">
               {(step !== "category" || showIntro) && !sessionQuery.isPending && (
                 <button
