@@ -36,3 +36,12 @@
 ## 4. 미확인
 - 화면에서의 401 처리(큐 중단·자동 재생성 없음)는 실행 중인 백엔드를 바꿔야 해서 브라우저로는 재현하지 않음. Lovable 테스트와 위 curl 401로 갈음.
 - 실제 휴대폰 터치, 키보드만으로 선택, reduced-motion 실기기는 실행하지 않음.
+
+## 5. 로컬 실행·종료 (ENV-006)
+- 2026-10-26 검증 시점 상태: 8080(vite, PID 3120, `localhost`)과 3001(Node 백엔드, PID 20964, `127.0.0.1`)은 총괄(Codex) 런타임의 pwsh가 띄운 상태로 정상 응답. 검증 중 재시작·설정 변경 없음.
+- 실행(저장소 루트, PowerShell은 `npm.cmd`):
+  1. `npm.cmd --prefix backend run dev` → `http://127.0.0.1:3001` (`backend/.env`: PUBLIC_ORIGIN=http://localhost:8080, 격리 DB `./data/int-001-b/onboarding.sqlite`, ASSET_ROOT `./data/int-001-b/assets`)
+  2. `npm.cmd --prefix frontend run dev -- --host localhost --port 8080 --strictPort`
+  3. 브라우저 `http://localhost:8080` (127.0.0.1:8080으로 열면 출처 불일치 403)
+- 확인: `Get-NetTCPConnection -LocalPort 8080,3001 -State Listen`
+- 종료: 실행한 터미널에서 Ctrl-C, 또는 `Stop-Process -Id <위 확인으로 얻은 PID>`. 종료 조건: 사용자 확인이 끝났거나 다음 통합 작업에서 서버 설정을 바꿀 때. 격리 DB·사진 폴더는 종료해도 보존됨.
