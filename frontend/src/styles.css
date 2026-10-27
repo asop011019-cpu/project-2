@@ -1392,6 +1392,7 @@ a:focus-visible {
 .style-pager {
   position: relative; /* offsetLeft/offsetTop of the cards are measured from here */
   --card-h: min(440px, 50svh);
+  --card-w: min(72vw, 330px);
   height: calc(var(--card-h) + 58px);
   margin-top: 12px;
   overflow-y: auto;
@@ -1439,13 +1440,14 @@ a:focus-visible {
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
-  padding: 0 12%;
+  /* Half the leftover width on each side, so the first and last cards can also sit in the middle. */
+  padding: 0 calc((100% - var(--card-w)) / 2);
   scrollbar-width: none;
   outline: none;
 }
 .style-card3d {
   position: relative;
-  flex: 0 0 76%;
+  flex: 0 0 var(--card-w);
   height: var(--card-h);
   overflow: hidden;
   border-radius: 22px;
