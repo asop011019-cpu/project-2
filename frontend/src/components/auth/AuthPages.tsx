@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +24,8 @@ import {
   logout,
   deleteAccount,
   startKakao,
+  getRestorePending,
+  restoreAccount,
 } from "@/lib/auth-api";
 import { safeReturnTo } from "@/lib/auth-routing";
 import { clearAuthDrafts } from "@/lib/auth-drafts";
@@ -363,7 +366,8 @@ export function AccountPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>정말 탈퇴하시겠어요?</AlertDialogTitle>
             <AlertDialogDescription>
-              계정, 취향 기록, 하의 사진·정보가 삭제되며 되돌릴 수 없어요.
+              탈퇴하면 바로 로그아웃되고 계정을 쓸 수 없어요. 취향 기록과 하의 사진·정보는 30일 동안
+              보관했다가 모두 삭제돼요. 30일 안에 다시 로그인하면 복구할 수 있어요.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <ErrorNotice error={remove.error} />
@@ -375,6 +379,84 @@ export function AccountPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </AuthShell>
+  );
+}
+
+export function formatKoreanDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(d);
+}
+
+export function RestorePage() {
+  const pending = useQuery({
+    queryKey: ["auth", "restore"],
+    queryFn: getRestorePending,
+    retry: false,
+  });
+  const mutation = useMutation({
+    mutationFn: restoreAccount,
+    onSuccess: (data) => {
+      toast.success("계정을 복구했어요");
+      move(data.returnTo);
+    },
+  });
+  const error = mutation.error ?? pending.error;
+  const expired =
+    error instanceof ApiError && (error.status === 410 || error.code === "RESTORE_EXPIRED");
+  return (
+    <AuthShell title="계정 복구">
+      {expired ? (
+        <>
+          <p role="alert" className="auth-error">
+            복구할 수 있는 시간이 지났어요.
+          </p>
+          <Button className="kakao-button mt-8 w-full" onClick={() => startKakao("/")}>
+            카카오로 다시 시작
+          </Button>
+        </>
+      ) : (
+        <>
+          <ErrorNotice error={error} />
+          {pending.isPending ? (
+            <p role="status">복구 정보를 불러오는 중이에요.</p>
+          ) : pending.data ? (
+            <p className="mb-8">
+              탈퇴한 계정이에요. {formatKoreanDate(pending.data.deletionScheduledAt)}까지 복구할 수
+              있어요.
+            </p>
+          ) : (
+            <Button variant="outline" className="w-full" onClick={() => void pending.refetch()}>
+              다시 시도
+            </Button>
+          )}
+          {pending.data && (
+            <div className="space-y-3">
+              <Button
+                className="w-full"
+                disabled={mutation.isPending}
+                onClick={() => mutation.mutate()}
+              >
+                {mutation.isPending ? "복구 중…" : "탈퇴 취소하고 복구하기"}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={mutation.isPending}
+                onClick={() => move("/")}
+              >
+                복구하지 않기
+              </Button>
+            </div>
+          )}
+        </>
+      )}
     </AuthShell>
   );
 }

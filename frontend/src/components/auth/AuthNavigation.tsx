@@ -18,7 +18,8 @@ export function AuthNavigation() {
     const finish = (event: Event) => {
       qc.clear();
       void router.navigate({ href: "/" }).then(() => {
-        if ((event as CustomEvent<boolean>).detail) toast.success("회원 탈퇴가 완료됐어요");
+        if ((event as CustomEvent<boolean>).detail)
+          toast.success("회원 탈퇴가 완료됐어요. 30일 안에 다시 로그인하면 복구할 수 있어요.");
       });
     };
     window.addEventListener("auth-navigation", navigate);

@@ -36,8 +36,8 @@ describe("AUTH-003 API", () => {
         Promise.resolve(new Response("{}", { headers: { "Content-Type": "application/json" } })),
       );
     vi.stubGlobal("fetch", fetcher);
-    await signup([{ key: "terms", version: "1", granted: true }]);
-    await putConsent({ key: "ai_analysis", version: "1", granted: false });
+    await signup([{ key: "terms", version: 1, granted: true }]);
+    await putConsent({ key: "ai_analysis", version: 1, granted: false });
     await logout();
     await logout(true);
     await deleteAccount();
@@ -53,7 +53,7 @@ describe("AUTH-003 API", () => {
       expect(init.headers["X-Onboarding-Request"]).toBe("1");
     }
     expect(JSON.parse(fetcher.mock.calls[0]?.[1].body ?? "null")).toEqual({
-      consents: [{ key: "terms", version: "1", granted: true }],
+      consents: [{ key: "terms", version: 1, granted: true }],
     });
     expect(fetcher.mock.calls[3]?.[0]).toBe("/api/auth/logout-all");
     expect(fetcher.mock.calls[4]?.[1].body).toBe("{}");

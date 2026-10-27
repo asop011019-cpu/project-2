@@ -16,6 +16,7 @@ import { Route as ConsentUpdateRouteImport } from './routes/consent-update'
 import { Route as GarmentRouteImport } from './routes/garment'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RestoreRouteImport } from './routes/restore'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
@@ -55,6 +56,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RestoreRoute = RestoreRouteImport.update({
+  id: '/restore',
+  path: '/restore',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   id: '/robots.txt',
   path: '/robots.txt',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/garment': typeof GarmentRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/restore': typeof RestoreRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/garment': typeof GarmentRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/restore': typeof RestoreRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/garment': typeof GarmentRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/restore': typeof RestoreRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/garment'
     | '/login'
     | '/privacy'
+    | '/restore'
     | '/robots.txt'
     | '/signup'
     | '/sitemap.xml'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/garment'
     | '/login'
     | '/privacy'
+    | '/restore'
     | '/robots.txt'
     | '/signup'
     | '/sitemap.xml'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/garment'
     | '/login'
     | '/privacy'
+    | '/restore'
     | '/robots.txt'
     | '/signup'
     | '/sitemap.xml'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   GarmentRoute: typeof GarmentRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
+  RestoreRoute: typeof RestoreRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SignupRoute: typeof SignupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/restore': {
+      id: '/restore'
+      path: '/restore'
+      fullPath: '/restore'
+      preLoaderRoute: typeof RestoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/robots.txt': {
       id: '/robots.txt'
       path: '/robots.txt'
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   GarmentRoute: GarmentRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
+  RestoreRoute: RestoreRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SignupRoute: SignupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,

@@ -25,7 +25,7 @@ vi.mock("@/lib/auth-api", async (importOriginal) => ({
 const documents = [
   {
     key: "terms",
-    version: "v2",
+    version: 2,
     required: true,
     title: "이용약관",
     body: "서버에서 받은 이용약관 본문",
@@ -33,7 +33,7 @@ const documents = [
   },
   {
     key: "privacy_required",
-    version: "v3",
+    version: 3,
     required: true,
     title: "개인정보 필수 동의",
     body: "서버 개인정보 본문",
@@ -41,7 +41,7 @@ const documents = [
   },
   {
     key: "ai_analysis",
-    version: "v1",
+    version: 1,
     required: false,
     title: "AI 분석",
     body: "외부 전송 동의 본문",
@@ -102,9 +102,9 @@ describe("AUTH-003 screens", () => {
     fireEvent.click(submit);
     await waitFor(() =>
       expect(vi.mocked(api.signup).mock.calls[0]?.[0]).toEqual([
-        { key: "terms", version: "v2", granted: true },
-        { key: "privacy_required", version: "v3", granted: true },
-        { key: "ai_analysis", version: "v1", granted: false },
+        { key: "terms", version: 2, granted: true },
+        { key: "privacy_required", version: 3, granted: true },
+        { key: "ai_analysis", version: 1, granted: false },
       ]),
     );
   });
