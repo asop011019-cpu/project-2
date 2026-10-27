@@ -17,7 +17,9 @@ export interface Conditions extends ConditionValues {
 
 export const TEMP_MIN = -20;
 export const TEMP_MAX = 40;
-export const DEFAULT_TEMP: TemperatureRange = { min: 10, max: 20 };
+/** Shown and sent when the user has not set them (user, 2026-10-28). */
+export const DEFAULT_TEMP: TemperatureRange = { min: 7, max: 17 };
+export const DEFAULT_FORMALITY = 50;
 export const BUDGET_MIN = 10_000;
 export const BUDGET_MAX = 5_000_000;
 export const BUDGET_PRESETS = [50_000, 100_000, 200_000, 300_000, 500_000] as const;
@@ -74,6 +76,15 @@ export function formatBudgetInput(text: string): string {
 
 export function isBudgetInRange(n: number): boolean {
   return Number.isInteger(n) && n >= BUDGET_MIN && n <= BUDGET_MAX;
+}
+
+/** 기온·격식을 정하지 않았으면(null) 기본값으로. "상관없음"과 다른 항목은 그대로 둔다. */
+export function withDefaults(v: ConditionValues): ConditionValues {
+  return {
+    ...v,
+    temperatureC: v.temperatureC ?? { ...DEFAULT_TEMP },
+    formality: v.formality ?? DEFAULT_FORMALITY,
+  };
 }
 
 /** 네 항목만 담은 정규 형태(PUT 본문과 같음). */

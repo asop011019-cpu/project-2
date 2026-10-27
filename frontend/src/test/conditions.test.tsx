@@ -36,16 +36,60 @@ afterEach(() => {
 });
 
 describe("코디 조건 화면", { timeout: 15_000 }, () => {
-  it("GET null이면 네 항목 모두 '아직 안 정함'이고 저장 버튼은 비활성", async () => {
+  it("한 번도 정하지 않았으면 기온 7~17°C·격식 50이 기본, 상황·예산은 '아직 안 정함', 저장 비활성", async () => {
     api.getConditions.mockResolvedValue(EMPTY);
     renderScreen();
     await screen.findByText("코디 조건", { selector: "h1" });
-    await waitFor(() => expect(status("cond-temp")).toHaveTextContent("아직 안 정함"));
-    for (const id of ["cond-occ", "cond-form", "cond-budget"])
+    await waitFor(() =>
+      expect(screen.getByTestId("cond-temp-value")).toHaveTextContent("7°C ~ 17°C"),
+    );
+    expect(status("cond-temp")).toHaveTextContent("쌀쌀함 ~ 선선함");
+    expect(status("cond-form")).toHaveTextContent("50, 중간");
+    expect(screen.getByRole("slider", { name: "격식 정도" })).toHaveAttribute(
+      "aria-valuenow",
+      "50",
+    );
+    for (const id of ["cond-occ", "cond-budget"])
       expect(status(id)).toHaveTextContent("아직 안 정함");
-    // Each section says it once, in its header.
-    expect(within(section("기온")).getAllByText("아직 안 정함")).toHaveLength(1);
     expect(saveBtn()).toBeDisabled();
+  });
+
+  it("이전에 저장한 값(상관없음 포함)은 기본값으로 바뀌지 않고 그대로 보인다", async () => {
+    api.getConditions.mockResolvedValue({
+      temperatureC: { min: -3, max: 4 },
+      occasions: null,
+      formality: "any",
+      additionalBudgetKrw: null,
+      updatedAt: "2026-10-27T00:00:00Z",
+    });
+    renderScreen();
+    await waitFor(() =>
+      expect(screen.getByTestId("cond-temp-value")).toHaveTextContent("-3°C ~ 4°C"),
+    );
+    expect(status("cond-form")).toHaveTextContent("상관없음");
+    expect(saveBtn()).toBeDisabled();
+  });
+
+  it("다른 항목만 저장해도 기본 기온·격식이 함께 저장된다", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    api.putConditions.mockImplementation(async (v) => ({
+      ...v,
+      updatedAt: "2026-10-27T00:00:00Z",
+    }));
+    renderScreen();
+    await userEvent.click(
+      within(await screen.findByRole("group", { name: "상황" })).getByRole("button", {
+        name: "일상",
+      }),
+    );
+    await userEvent.click(saveBtn());
+    await waitFor(() => expect(api.putConditions).toHaveBeenCalledTimes(1));
+    expect(api.putConditions.mock.calls[0]![0]).toEqual({
+      temperatureC: { min: 7, max: 17 },
+      occasions: ["daily"],
+      formality: 50,
+      additionalBudgetKrw: null,
+    });
   });
 
   it("상관없음·선택·지우기가 PUT 본문에 null/'any'를 구분해 그대로 들어간다", async () => {
@@ -59,8 +103,9 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     await userEvent.click(within(temp).getByRole("button", { name: "상관없음" }));
     await userEvent.click(within(section("상황")).getByRole("button", { name: "출근·등교" }));
     const form = section("격식");
-    await userEvent.click(within(form).getByRole("button", { name: "격식 정하기" }));
-    await userEvent.click(within(form).getByRole("button", { name: "선택 지우기" }));
+    // 상관없음 on and off again: back to the default, not to "not answered".
+    await userEvent.click(within(form).getByRole("button", { name: "상관없음" }));
+    await userEvent.click(within(form).getByRole("button", { name: "상관없음" }));
     await userEvent.click(
       within(section("추가 구매 예산")).getByRole("button", { name: "상한 없음" }),
     );
@@ -69,7 +114,7 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     expect(api.putConditions.mock.calls[0]![0]).toEqual({
       temperatureC: "any",
       occasions: ["work_school"],
-      formality: null,
+      formality: 50,
       additionalBudgetKrw: "any",
     });
     expect(await screen.findByText("저장했어요")).toBeInTheDocument();
@@ -89,23 +134,21 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     expect(saveBtn()).toBeDisabled();
   });
 
-  it("기온 손잡이: 기본 10~20, 화살표 ±1, 교차 방지, aria-valuetext", async () => {
+  it("기온 손잡이: 기본 7~17, 화살표 ±1, 교차 방지, aria-valuetext", async () => {
     api.getConditions.mockResolvedValue(EMPTY);
     renderScreen();
-    const temp = await screen.findByRole("region", { name: "기온" });
-    await userEvent.click(within(temp).getByRole("button", { name: "기온 정하기" }));
-    const low = screen.getByRole("slider", { name: "최저 기온" });
+    const low = await screen.findByRole("slider", { name: "최저 기온" });
     const high = screen.getByRole("slider", { name: "최고 기온" });
-    expect(low).toHaveAttribute("aria-valuetext", "10도, 쌀쌀함");
+    expect(low).toHaveAttribute("aria-valuetext", "7도, 쌀쌀함");
     fireEvent.keyDown(low, { key: "ArrowLeft" });
     fireEvent.keyDown(low, { key: "ArrowLeft" });
-    expect(low).toHaveAttribute("aria-valuetext", "8도, 쌀쌀함");
-    expect(screen.getByTestId("cond-temp-value")).toHaveTextContent("8°C ~ 20°C");
-    expect(status("cond-temp")).toHaveTextContent("쌀쌀함 ~ 따뜻함");
+    expect(low).toHaveAttribute("aria-valuetext", "5도, 쌀쌀함");
+    expect(screen.getByTestId("cond-temp-value")).toHaveTextContent("5°C ~ 17°C");
+    expect(status("cond-temp")).toHaveTextContent("쌀쌀함 ~ 선선함");
     for (let i = 0; i < 20; i++) fireEvent.keyDown(high, { key: "ArrowLeft" });
-    expect(high).toHaveAttribute("aria-valuenow", "8");
+    expect(high).toHaveAttribute("aria-valuenow", "5");
     fireEvent.keyDown(low, { key: "ArrowRight" });
-    expect(low).toHaveAttribute("aria-valuenow", "8");
+    expect(low).toHaveAttribute("aria-valuenow", "5");
     fireEvent.keyDown(high, { key: "End" });
     expect(high).toHaveAttribute("aria-valuetext", "40도, 더움");
   });
@@ -173,7 +216,7 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     await waitFor(() => expect(window.sessionStorage.getItem(DRAFT_KEY)).not.toBeNull());
     const stored = JSON.parse(window.sessionStorage.getItem(DRAFT_KEY)!);
     expect(stored).toEqual({
-      temperatureC: null,
+      temperatureC: { min: 7, max: 17 },
       occasions: null,
       formality: "any",
       additionalBudgetKrw: null,
@@ -247,7 +290,7 @@ describe("코디 조건 안내", { timeout: 15_000 }, () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByTestId("cond-unanswered")).toHaveTextContent(
-      "정하지 않은 항목(기온·추가 구매 예산)은 조건 없이 추천해요",
+      "정하지 않은 항목(추가 구매 예산)은 조건 없이 추천해요",
     );
     await userEvent.click(within(section("격식")).getByRole("button", { name: "상관없음" }));
     expect(within(section("격식")).queryByText(/격식 행사인데/)).not.toBeInTheDocument();

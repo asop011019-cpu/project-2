@@ -10,6 +10,7 @@ import { getConditions, putConditions } from "@/lib/conditions-api";
 import {
   BUDGET_PRESETS,
   BUDGET_RANGE_MESSAGE,
+  DEFAULT_FORMALITY,
   DEFAULT_TEMP,
   EMPTY_VALUES,
   OCCASIONS,
@@ -30,6 +31,7 @@ import {
   toValues,
   unansweredLabels,
   validateValues,
+  withDefaults,
   writeDraft,
   type ConditionValues,
   type Conditions,
@@ -38,7 +40,6 @@ import { RangeBar } from "./RangeBar";
 
 export const CONDITIONS_QUERY_KEY = ["onboarding", "conditions"] as const;
 type FieldKey = keyof ConditionValues;
-const DEFAULT_FORMALITY = 50;
 
 function navigate(href: string) {
   window.dispatchEvent(new CustomEvent("auth-navigation", { detail: href }));
@@ -170,7 +171,8 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
   const [savedNotice, setSavedNotice] = useState(false);
   const initialized = useRef(false);
 
-  const saved: ConditionValues | null = query.data ? toValues(query.data) : null;
+  // Temperature and formality start from their defaults; saving sends them as chosen values.
+  const saved: ConditionValues | null = query.data ? withDefaults(toValues(query.data)) : null;
 
   const applyValues = (v: ConditionValues) => {
     setValues(v);
@@ -185,9 +187,9 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
     initialized.current = true;
     const draft = readDraft();
     if (draft) {
-      applyValues(draft);
+      applyValues(withDefaults(draft));
       setDraftRestored(true);
-    } else applyValues(toValues(query.data));
+    } else applyValues(withDefaults(toValues(query.data)));
   }, [query.data]);
 
   const dirty = saved !== null && !sameValues(values, saved);
@@ -215,7 +217,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
     mutationFn: putConditions,
     onSuccess: (result: Conditions) => {
       queryClient.setQueryData(CONDITIONS_QUERY_KEY, result);
-      applyValues(toValues(result));
+      applyValues(withDefaults(toValues(result)));
       clearDraft();
       setDraftRestored(false);
       setServerErrors({});
@@ -422,25 +424,15 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                 <span>더움 28~</span>
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                {!tRange && (
-                  <Chip
-                    selected={false}
-                    disabled={locked}
-                    onClick={() => update({ temperatureC: { ...DEFAULT_TEMP } })}
-                  >
-                    기온 정하기
-                  </Chip>
-                )}
                 <Chip
                   selected={t === "any"}
                   disabled={locked}
-                  onClick={() => update({ temperatureC: t === "any" ? null : "any" })}
+                  onClick={() =>
+                    update({ temperatureC: t === "any" ? { ...DEFAULT_TEMP } : "any" })
+                  }
                 >
                   상관없음
                 </Chip>
-                {t !== null && (
-                  <ClearButton disabled={locked} onClick={() => update({ temperatureC: null })} />
-                )}
               </div>
             </Section>
 
@@ -508,25 +500,13 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                 <span>격식</span>
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                {fNum === null && (
-                  <Chip
-                    selected={false}
-                    disabled={locked}
-                    onClick={() => update({ formality: DEFAULT_FORMALITY })}
-                  >
-                    격식 정하기
-                  </Chip>
-                )}
                 <Chip
                   selected={f === "any"}
                   disabled={locked}
-                  onClick={() => update({ formality: f === "any" ? null : "any" })}
+                  onClick={() => update({ formality: f === "any" ? DEFAULT_FORMALITY : "any" })}
                 >
                   상관없음
                 </Chip>
-                {f !== null && (
-                  <ClearButton disabled={locked} onClick={() => update({ formality: null })} />
-                )}
               </div>
             </Section>
 
