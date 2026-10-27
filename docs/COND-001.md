@@ -48,6 +48,22 @@
 - 같은 값 재저장 검사를 끄면 해당 테스트 실패 확인.
 - 전체 백엔드 81개 중 80 통과(기존 Windows symlink 1). GAR-002 마이그레이션 테스트는 v8에서 멈추도록 수정. typecheck·prettier 통과.
 
+## 화면 구현 (Lovable 9edc536, 크레딧 전량 소진)
+
+| 파일 | 내용 |
+| --- | --- |
+| `frontend/src/routes/conditions.tsx` | 로그인·동의 확인 후 화면 |
+| `frontend/src/components/conditions/ConditionsScreen.tsx`, `RangeBar.tsx` | 네 항목 입력, 손잡이 2개 기온 바, 하단 저장 바 |
+| `frontend/src/lib/conditions.ts`, `conditions-api.ts` | null/"any" 값 모델·검증·초안 보관, GET/PUT |
+| `frontend/src/components/garment/GarmentScreen.tsx` | 옷 저장 후 "코디 조건 정하기" 버튼 (+ 재확인 저장 수정이 원본에 반영됨) |
+| `frontend/src/test/conditions.test.tsx` | 화면 테스트 |
+
+검증 (2026-10-28)
+- vitest 13파일 157개 통과, tsc·eslint·prettier 통과.
+- 격리 DB 사본(`backend/data/cond001-live`, 3095/8095)에서 375px 실제 동작: 처음 전부 "아직 안 정함" → 기온 정하기(10~20°C) 후 최저 손잡이 키보드 ←2 → `8도, 쌀쌀함`, 출근·등교, 격식 상관없음, 예산 10만 → 저장 200, 서버 응답 `{"temperatureC":{"min":8,"max":20},"occasions":["work_school"],"formality":"any","additionalBudgetKrw":100000}` → 새로고침 후 같은 값 복원, 저장 버튼 비활성, 초안 없음. 직접 입력 5000 → "1만 원~500만 원 사이로 입력해 주세요." 표시·저장 비활성. 마지막 입력이 하단 저장 바에 가리지 않음.
+- 미확인: 실제 휴대폰, 401/동의 이동 후 초안 복원의 실제 브라우저 흐름(vitest로만 확인).
+- 작은 표시 중복: 기온 칸이 미입력일 때 "아직 안 정함"이 제목 옆과 본문에 두 번 보임(기능 문제 없음).
+
 ## 잔여 조건
 
 - 조건 → 추천 실제 전달(M4)과 불가능 조건 안내(M3.2)는 후속. 옷장 기능 없음.

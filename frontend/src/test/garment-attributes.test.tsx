@@ -176,6 +176,28 @@ describe("garment-attributes 유닛", () => {
 
 // These tests type and click through sheets; under a full parallel run they exceed the 5s default.
 describe("GarmentScreen 옷 정보 확인", { timeout: 15_000 }, () => {
+  it("needsConfirmation이면 값 변경 없이도 옷 정보 저장이 가능하다", async () => {
+    const saved = makeGarment(
+      "pants",
+      makeAttributes("pants", { color: { base: "black" } }, { needsConfirmation: true }),
+    );
+    apiMocks.ensureSession.mockResolvedValue(undefined);
+    apiMocks.getGarment.mockResolvedValue(saved);
+    apiMocks.putGarmentAttributes.mockResolvedValue({
+      ...saved,
+      attributes: makeAttributes("pants", { color: { base: "black" } }),
+    });
+    renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "옷 정보 확인 (선택)" }));
+    const save = screen.getByRole("button", { name: "옷 정보 저장" });
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+    await waitFor(() => expect(apiMocks.putGarmentAttributes).toHaveBeenCalledTimes(1));
+    expect(apiMocks.putGarmentAttributes.mock.calls[0]?.[0]).toMatchObject({
+      garmentType: "pants",
+    });
+  });
+
   it("두 입력창은 닫혀 시작하며 닫아도 선택값·글과 요약이 유지된다", async () => {
     apiMocks.ensureSession.mockResolvedValue(undefined);
     apiMocks.getGarment.mockResolvedValue(makeGarment("pants"));
@@ -401,11 +423,6 @@ describe("GarmentScreen 옷 정보 확인", { timeout: 15_000 }, () => {
         screen.getByText("사진이나 옷 종류가 바뀌었어요. 정보를 확인하고 다시 저장해 주세요."),
       ).toBeInTheDocument();
     });
-    // Confirming unchanged values must still be possible, or the notice can never be cleared.
-    const save = screen.getByRole("button", { name: "옷 정보 저장" });
-    expect(save).toBeEnabled();
-    await userEvent.click(save);
-    await waitFor(() => expect(apiMocks.putGarmentAttributes).toHaveBeenCalledTimes(1));
   });
 
   it("저장 실패(네트워크)에도 선택값과 글을 지우지 않는다", async () => {

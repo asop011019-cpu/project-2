@@ -478,7 +478,6 @@ export function GarmentScreen({
     ? JSON.stringify(buildAttributesBody(garmentType, attrValues, rawText))
     : null;
   const attrDirty = savedAttrBody !== currentAttrBody;
-  // After a new photo or type the server asks for confirmation; saving unchanged values confirms them.
   const confirmPending =
     saved?.attributes?.needsConfirmation === true && garmentType === saved.garmentType;
   const canSaveAttributes =
@@ -825,6 +824,21 @@ export function GarmentScreen({
                   다시 시도
                 </Button>
               </div>
+            )}
+
+            {saved !== null && (
+              <button
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("auth-navigation", { detail: "/conditions" }),
+                  )
+                }
+                className="tap-feedback mt-6 flex min-h-12 items-center justify-between rounded-2xl bg-card px-4 text-sm font-bold text-foreground ring-1 ring-border hover:bg-accent"
+              >
+                코디 조건 정하기
+                <span aria-hidden="true">→</span>
+              </button>
             )}
 
             {/* The section's entrance animation keeps a transform, which pins this "fixed" bar to the section's bottom on mobile; leave room so it never covers the last controls. */}

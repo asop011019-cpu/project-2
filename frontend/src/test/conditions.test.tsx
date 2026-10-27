@@ -1,0 +1,207 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/onboarding-api";
+import { DRAFT_KEY, type Conditions } from "@/lib/conditions";
+
+const api = vi.hoisted(() => ({ getConditions: vi.fn(), putConditions: vi.fn() }));
+vi.mock("@/lib/conditions-api", () => api);
+
+import { ConditionsScreen } from "@/components/conditions/ConditionsScreen";
+
+const EMPTY: Conditions = {
+  temperatureC: null,
+  occasions: null,
+  formality: null,
+  additionalBudgetKrw: null,
+  updatedAt: null,
+};
+
+function renderScreen() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <ConditionsScreen />
+    </QueryClientProvider>,
+  );
+}
+const status = (id: string) => screen.getByTestId(`${id}-status`);
+const section = (name: string) => screen.getByRole("region", { name });
+const saveBtn = () => screen.getByRole("button", { name: /조건 저장|저장 중/ });
+
+afterEach(() => {
+  vi.clearAllMocks();
+  window.sessionStorage.clear();
+});
+
+describe("코디 조건 화면", { timeout: 15_000 }, () => {
+  it("GET null이면 네 항목 모두 '아직 안 정함'이고 저장 버튼은 비활성", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    renderScreen();
+    await screen.findByText("코디 조건", { selector: "h1" });
+    await waitFor(() => expect(status("cond-temp")).toHaveTextContent("아직 안 정함"));
+    for (const id of ["cond-occ", "cond-form", "cond-budget"])
+      expect(status(id)).toHaveTextContent("아직 안 정함");
+    expect(saveBtn()).toBeDisabled();
+  });
+
+  it("상관없음·선택·지우기가 PUT 본문에 null/'any'를 구분해 그대로 들어간다", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    api.putConditions.mockImplementation(async (v) => ({
+      ...v,
+      updatedAt: "2026-10-27T00:00:00Z",
+    }));
+    renderScreen();
+    const temp = await screen.findByRole("region", { name: "기온" });
+    await userEvent.click(within(temp).getByRole("button", { name: "상관없음" }));
+    await userEvent.click(within(section("상황")).getByRole("button", { name: "출근·등교" }));
+    const form = section("격식");
+    await userEvent.click(within(form).getByRole("button", { name: "격식 정하기" }));
+    await userEvent.click(within(form).getByRole("button", { name: "선택 지우기" }));
+    await userEvent.click(
+      within(section("추가 구매 예산")).getByRole("button", { name: "상한 없음" }),
+    );
+    await userEvent.click(saveBtn());
+    await waitFor(() => expect(api.putConditions).toHaveBeenCalledTimes(1));
+    expect(api.putConditions.mock.calls[0]![0]).toEqual({
+      temperatureC: "any",
+      occasions: ["work_school"],
+      formality: null,
+      additionalBudgetKrw: "any",
+    });
+    expect(await screen.findByText("저장했어요")).toBeInTheDocument();
+    expect(saveBtn()).toBeDisabled();
+  });
+
+  it("선택된 상황 칩을 다시 누르면 null로 돌아가 저장할 변경이 없다", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    renderScreen();
+    const occ = await screen.findByRole("group", { name: "상황" });
+    const chip = within(occ).getByRole("button", { name: "일상" });
+    await userEvent.click(chip);
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(saveBtn()).toBeEnabled();
+    await userEvent.click(chip);
+    expect(chip).toHaveAttribute("aria-pressed", "false");
+    expect(saveBtn()).toBeDisabled();
+  });
+
+  it("기온 손잡이: 기본 10~20, 화살표 ±1, 교차 방지, aria-valuetext", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    renderScreen();
+    const temp = await screen.findByRole("region", { name: "기온" });
+    await userEvent.click(within(temp).getByRole("button", { name: "기온 정하기" }));
+    const low = screen.getByRole("slider", { name: "최저 기온" });
+    const high = screen.getByRole("slider", { name: "최고 기온" });
+    expect(low).toHaveAttribute("aria-valuetext", "10도, 쌀쌀함");
+    fireEvent.keyDown(low, { key: "ArrowLeft" });
+    fireEvent.keyDown(low, { key: "ArrowLeft" });
+    expect(low).toHaveAttribute("aria-valuetext", "8도, 쌀쌀함");
+    expect(status("cond-temp")).toHaveTextContent("8°C ~ 20°C");
+    for (let i = 0; i < 20; i++) fireEvent.keyDown(high, { key: "ArrowLeft" });
+    expect(high).toHaveAttribute("aria-valuenow", "8");
+    fireEvent.keyDown(low, { key: "ArrowRight" });
+    expect(low).toHaveAttribute("aria-valuenow", "8");
+    fireEvent.keyDown(high, { key: "End" });
+    expect(high).toHaveAttribute("aria-valuetext", "40도, 더움");
+  });
+
+  it("예산 직접 입력: 쉼표 표시·정수 전송·범위 밖 안내", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    api.putConditions.mockImplementation(async (v) => ({ ...v, updatedAt: "x" }));
+    renderScreen();
+    const budget = await screen.findByRole("region", { name: "추가 구매 예산" });
+    await userEvent.click(within(budget).getByRole("button", { name: "직접 입력" }));
+    const input = screen.getByLabelText("예산 금액");
+    await userEvent.type(input, "5000");
+    expect(input).toHaveValue("5,000");
+    expect(screen.getByText("1만 원~500만 원 사이로 입력해 주세요.")).toBeInTheDocument();
+    expect(saveBtn()).toBeDisabled();
+    await userEvent.clear(input);
+    await userEvent.type(input, "150000");
+    expect(input).toHaveValue("150,000");
+    expect(status("cond-budget")).toHaveTextContent("150,000원");
+    await userEvent.click(saveBtn());
+    await waitFor(() =>
+      expect(api.putConditions.mock.calls[0]![0].additionalBudgetKrw).toBe(150000),
+    );
+  });
+
+  it("저장 실패·SESSION_REQUIRED여도 입력이 유지되고 성공 표시가 없다", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    api.putConditions.mockRejectedValueOnce(
+      new ApiError({ status: 500, code: "INTERNAL_ERROR", message: "" }),
+    );
+    renderScreen();
+    const occ = await screen.findByRole("group", { name: "상황" });
+    await userEvent.click(within(occ).getByRole("button", { name: "야외활동" }));
+    await userEvent.click(saveBtn());
+    expect(await screen.findByText(/조건을 저장하지 못했어요/)).toBeInTheDocument();
+    expect(within(occ).getByRole("button", { name: "야외활동" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByText("저장했어요")).not.toBeInTheDocument();
+    api.putConditions.mockRejectedValueOnce(
+      new ApiError({ status: 401, code: "SESSION_REQUIRED", message: "" }),
+    );
+    await userEvent.click(saveBtn());
+    expect(await screen.findByText(/세션이 만료됐거나/)).toBeInTheDocument();
+    expect(within(occ).getByRole("button", { name: "야외활동" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByText("저장했어요")).not.toBeInTheDocument();
+  });
+
+  it("AUTH_REQUIRED로 로그인 이동 직전 초안을 보관하고 재진입 시 복원한다", async () => {
+    api.getConditions.mockResolvedValue(EMPTY);
+    api.putConditions.mockImplementation(async () => {
+      window.dispatchEvent(
+        new CustomEvent("auth-navigation", { detail: "/login?returnTo=%2Fconditions" }),
+      );
+      throw new ApiError({ status: 401, code: "AUTH_REQUIRED", message: "" });
+    });
+    const first = renderScreen();
+    const form = await screen.findByRole("region", { name: "격식" });
+    await userEvent.click(within(form).getByRole("button", { name: "상관없음" }));
+    await userEvent.click(saveBtn());
+    await waitFor(() => expect(window.sessionStorage.getItem(DRAFT_KEY)).not.toBeNull());
+    const stored = JSON.parse(window.sessionStorage.getItem(DRAFT_KEY)!);
+    expect(stored).toEqual({
+      temperatureC: null,
+      occasions: null,
+      formality: "any",
+      additionalBudgetKrw: null,
+    });
+    first.unmount();
+
+    renderScreen();
+    expect(await screen.findByText("저장하지 않은 입력을 불러왔어요")).toBeInTheDocument();
+    expect(status("cond-form")).toHaveTextContent("상관없음");
+    expect(saveBtn()).toBeEnabled();
+  });
+
+  it("서버 값과 같으면 저장 버튼이 비활성이다", async () => {
+    api.getConditions.mockResolvedValue({
+      temperatureC: { min: 8, max: 20 },
+      occasions: ["daily"],
+      formality: 60,
+      additionalBudgetKrw: 100000,
+      updatedAt: "2026-10-27T00:00:00Z",
+    });
+    renderScreen();
+    await waitFor(() => expect(status("cond-temp")).toHaveTextContent("8°C ~ 20°C"));
+    expect(screen.getByRole("slider", { name: "격식 정도" })).toHaveAttribute(
+      "aria-valuetext",
+      "60, 조금 격식",
+    );
+    expect(saveBtn()).toBeDisabled();
+    const occ = screen.getByRole("group", { name: "상황" });
+    await userEvent.click(within(occ).getByRole("button", { name: "일상" }));
+    expect(saveBtn()).toBeEnabled();
+    await userEvent.click(within(occ).getByRole("button", { name: "일상" }));
+    expect(saveBtn()).toBeDisabled();
+  });
+});

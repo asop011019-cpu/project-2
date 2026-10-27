@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as AccountRouteImport } from './routes/account'
+import { Route as ConditionsRouteImport } from './routes/conditions'
 import { Route as ConsentUpdateRouteImport } from './routes/consent-update'
 import { Route as GarmentRouteImport } from './routes/garment'
 import { Route as LoginRouteImport } from './routes/login'
@@ -34,6 +35,11 @@ const SplatRoute = SplatRouteImport.update({
 const AccountRoute = AccountRouteImport.update({
   id: '/account',
   path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConditionsRoute = ConditionsRouteImport.update({
+  id: '/conditions',
+  path: '/conditions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsentUpdateRoute = ConsentUpdateRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/account': typeof AccountRoute
+  '/conditions': typeof ConditionsRoute
   '/consent-update': typeof ConsentUpdateRoute
   '/garment': typeof GarmentRoute
   '/login': typeof LoginRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/account': typeof AccountRoute
+  '/conditions': typeof ConditionsRoute
   '/consent-update': typeof ConsentUpdateRoute
   '/garment': typeof GarmentRoute
   '/login': typeof LoginRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/account': typeof AccountRoute
+  '/conditions': typeof ConditionsRoute
   '/consent-update': typeof ConsentUpdateRoute
   '/garment': typeof GarmentRoute
   '/login': typeof LoginRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/account'
+    | '/conditions'
     | '/consent-update'
     | '/garment'
     | '/login'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/account'
+    | '/conditions'
     | '/consent-update'
     | '/garment'
     | '/login'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/account'
+    | '/conditions'
     | '/consent-update'
     | '/garment'
     | '/login'
@@ -163,6 +175,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
   AccountRoute: typeof AccountRoute
+  ConditionsRoute: typeof ConditionsRoute
   ConsentUpdateRoute: typeof ConsentUpdateRoute
   GarmentRoute: typeof GarmentRoute
   LoginRoute: typeof LoginRoute
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/account'
       preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/conditions': {
+      id: '/conditions'
+      path: '/conditions'
+      fullPath: '/conditions'
+      preLoaderRoute: typeof ConditionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/consent-update': {
@@ -259,6 +279,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
   AccountRoute: AccountRoute,
+  ConditionsRoute: ConditionsRoute,
   ConsentUpdateRoute: ConsentUpdateRoute,
   GarmentRoute: GarmentRoute,
   LoginRoute: LoginRoute,
