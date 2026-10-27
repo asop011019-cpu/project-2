@@ -19,6 +19,7 @@ export interface AuthConfig {
   rotationGraceSeconds: number;
   handshakeTtlSeconds: number;
   reauthWindowSeconds: number;
+  unlinkLeaseSeconds: number;
   kakao?: {
     restApiKey: string;
     clientSecret?: string;
@@ -78,6 +79,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       rotationGraceSeconds: seconds(env.AUTH_ROTATION_GRACE_SECONDS, 60),
       handshakeTtlSeconds: 600,
       reauthWindowSeconds: 600,
+      // Longer than the 10 s Kakao request timeout; a crashed unlink frees the member after this.
+      unlinkLeaseSeconds: 60,
       ...(env.KAKAO_REST_API_KEY
         ? {
             kakao: {

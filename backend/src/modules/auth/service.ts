@@ -228,6 +228,7 @@ export class AuthService {
           returnTo,
         };
       }
+      this.refuseWhileUnlinking(subject);
       const token = newToken();
       this.db
         .prepare("DELETE FROM pending_signups WHERE expires_at<=?")
@@ -364,6 +365,7 @@ export class AuthService {
           "IDENTITY_ALREADY_LINKED",
           "이미 가입된 카카오 계정이에요. 다시 로그인해 주세요.",
         );
+      this.refuseWhileUnlinking(pending.subject);
       const userId = randomUUID();
       const now = this.at();
       this.db
@@ -634,7 +636,7 @@ export class AuthService {
         .run(now, context.userId);
       this.db
         .prepare(
-          "INSERT INTO account_deletions VALUES(?,?,?,?,'pending',0,NULL,?,?)",
+          "INSERT INTO account_deletions(id,user_id,provider,provider_subject,stage,attempts,last_error,created_at,updated_at) VALUES(?,?,?,?,'pending',0,NULL,?,?)",
         )
         .run(
           randomUUID(),
@@ -651,6 +653,23 @@ export class AuthService {
         .run(now, context.userId);
     });
     await this.processDeletions();
+  }
+
+  /** True while a deletion job is unlinking this Kakao member (claim younger than the lease). */
+  private unlinkInFlight(subject: string): boolean {
+    return !!this.db
+      .prepare(
+        "SELECT 1 FROM account_deletions WHERE provider_subject=? AND unlink_started_at IS NOT NULL AND unlink_started_at>?",
+      )
+      .get(subject, this.at(-this.config.unlinkLeaseSeconds));
+  }
+  private refuseWhileUnlinking(subject: string): void {
+    if (this.unlinkInFlight(subject))
+      throw new DomainError(
+        403,
+        "ACCOUNT_UNAVAILABLE",
+        "탈퇴 정리가 끝나는 중이에요. 잠시 후 다시 로그인해 주세요.",
+      );
   }
 
   /** Advances unfinished deletion jobs; runs are serialized and safe to repeat. */
@@ -690,27 +709,47 @@ export class AuthService {
           });
           job.stage = "data_deleted";
         }
-        // If the same Kakao member has already joined again, unlinking now would cut the new
-        // account's connection; the old account's data is gone, so skip the unlink.
-        const rejoined =
-          job.subject &&
-          this.db
-            .prepare(
-              "SELECT 1 FROM user_identities WHERE provider='kakao' AND provider_subject=?",
-            )
-            .get(job.subject);
-        if (job.subject && !rejoined) {
-          const result = this.provider
-            ? await this.provider.unlink(job.subject)
-            : "not_configured";
-          if (result === "not_configured") {
-            failed("KAKAO_UNLINK_NOT_CONFIGURED");
-            continue;
+        if (job.subject) {
+          // Claim the unlink atomically. If the member already joined again, unlinking would cut
+          // the new account's connection, so skip it. Otherwise new signups for this member are
+          // refused while the claim is fresh (see unlinkInFlight), so none can slip in meanwhile.
+          const claim = this.transaction(() => {
+            const rejoined = this.db
+              .prepare(
+                "SELECT 1 FROM user_identities WHERE provider='kakao' AND provider_subject=?",
+              )
+              .get(job.subject);
+            if (rejoined) return "rejoined";
+            this.db
+              .prepare(
+                "UPDATE account_deletions SET unlink_started_at=? WHERE id=?",
+              )
+              .run(this.at(), job.id);
+            return "claimed";
+          });
+          if (claim === "claimed") {
+            let result: "unlinked" | "not_configured" | undefined;
+            try {
+              result = this.provider
+                ? await this.provider.unlink(job.subject)
+                : "not_configured";
+            } finally {
+              if (result !== "unlinked")
+                this.db
+                  .prepare(
+                    "UPDATE account_deletions SET unlink_started_at=NULL WHERE id=?",
+                  )
+                  .run(job.id);
+            }
+            if (result === "not_configured") {
+              failed("KAKAO_UNLINK_NOT_CONFIGURED");
+              continue;
+            }
           }
         }
         this.db
           .prepare(
-            "UPDATE account_deletions SET stage='done', provider=NULL, provider_subject=NULL, last_error=NULL, updated_at=? WHERE id=?",
+            "UPDATE account_deletions SET stage='done', provider=NULL, provider_subject=NULL, unlink_started_at=NULL, last_error=NULL, updated_at=? WHERE id=?",
           )
           .run(this.at(), job.id);
       } catch (error) {

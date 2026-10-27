@@ -19,6 +19,9 @@ export function fakeKakao(): OAuthProvider & {
   exchanged: string[];
   unlinked: string[];
   unlinkMode: "ok" | "not_configured" | "fail";
+  /** When set, unlink waits on it: lets a test act while an unlink is in flight. */
+  unlinkGate: Promise<void> | undefined;
+  unlinkCalls: number;
 } {
   const exchanged: string[] = [];
   const unlinked: string[] = [];
@@ -27,9 +30,13 @@ export function fakeKakao(): OAuthProvider & {
     exchanged,
     unlinked,
     unlinkMode: "ok",
+    unlinkGate: undefined,
+    unlinkCalls: 0,
     authorizeUrl: (state, options = {}) =>
       `https://kauth.kakao.test/oauth/authorize?state=${encodeURIComponent(state)}${options.forceLogin ? "&prompt=login" : ""}`,
     async unlink(subject) {
+      this.unlinkCalls++;
+      if (this.unlinkGate) await this.unlinkGate;
       if (this.unlinkMode === "fail")
         throw new DomainError(502, "OAUTH_PROVIDER_ERROR", "fake outage");
       if (this.unlinkMode === "not_configured") return "not_configured";

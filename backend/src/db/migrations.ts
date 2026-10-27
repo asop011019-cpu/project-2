@@ -122,6 +122,9 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
    ) STRICT;
    CREATE INDEX account_deletions_stage_idx ON account_deletions(stage);`,
+  // v6 (AUTH-004-R1): when a deletion job started unlinking Kakao; new signups for that member
+  // wait while it is fresh so a delayed unlink cannot cut a connection made in the meantime.
+  `ALTER TABLE account_deletions ADD COLUMN unlink_started_at TEXT;`,
 ];
 
 /** Applies pending migrations; `target` (tests only) stops at an older schema version. */
