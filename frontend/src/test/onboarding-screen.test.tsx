@@ -202,7 +202,7 @@ describe("OnboardingScreen", () => {
     expect(screen.queryByRole("button", { name: "좋아요" })).not.toBeInTheDocument();
   });
 
-  it("세 응답 저장 요청 본문", async () => {
+  it("좋아요 응답 저장 요청 본문 (두 번 탭)", async () => {
     setupOnline(session());
     api.putStyleResponse.mockImplementation((id: string, r: string) =>
       Promise.resolve(
@@ -210,19 +210,9 @@ describe("OnboardingScreen", () => {
       ),
     );
     renderScreen();
-    for (const [label, value] of [
-      ["좋아요", "liked"],
-      ["건너뛰기", "skipped"],
-    ] as const) {
-      if (value === "liked") {
-        await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
-      } else {
-        await userEvent.click(await screen.findByRole("button", { name: label }));
-      }
-      await waitFor(() => expect(api.putStyleResponse.mock.calls.at(-1)?.[1]).toBe(value));
-    }
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
+    await waitFor(() => expect(api.putStyleResponse).toHaveBeenCalledTimes(1));
     expect(api.putStyleResponse.mock.calls[0]).toEqual(["a", "liked", undefined]);
-    expect(api.putStyleResponse.mock.calls[1]).toEqual(["a", "skipped", "b"]);
   });
 
   it("응답 저장 실패 시 상태 미반영", async () => {
@@ -586,31 +576,43 @@ describe("ONB-003-R1 사진 선호", () => {
       saved = { ...saved, responses: [{ styleId: "a", response: "liked", updatedAt: "" }] };
       return saved;
     });
-    renderScreen();
+    return renderScreen();
   }
-  it("응답 버튼은 맨 아래 건너뛰기 하나뿐 (좋아요는 두 번 탭, 별로 버튼 없음)", async () => {
+  it("좋아요·별로 버튼 없이 맨 아래 건너뛰기, 추가 사진 묶음 없음", async () => {
     setup();
     await screen.findByRole("heading", { name: "스타일A" });
     expect(screen.queryByRole("button", { name: /^좋아요$/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "별로" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("style-photo-i2")).not.toBeInTheDocument();
     const skip = screen.getByRole("button", { name: "건너뛰기" });
-    const next = screen.getByRole("button", { name: "다음 →" });
-    // Follows the previous/next row in reading order.
-    expect(next.compareDocumentPosition(skip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const check = screen.getByRole("button", { name: "취향 확인하기" });
+    expect(check.compareDocumentPosition(skip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
-  it.each([
-    ["style-card-photo", "i1", 0],
-    ["style-photo-i2", "i2", 1],
-  ] as const)("%s 더블탭은 해당 사진+스타일 저장, 위치 유지", async (testId, imageId, index) => {
+  it("건너뛰기는 자동 추천 안내 후 응답 저장 없이 다음 단계로, 계속 고르기는 그대로", async () => {
+    const onComplete = setup();
+    await screen.findByRole("heading", { name: "스타일A" });
+    await userEvent.click(screen.getByRole("button", { name: "건너뛰기" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "취향 고르기를 건너뛸까요?" });
+    expect(dialog).toHaveTextContent("자동으로 추천해 드릴게요");
+    await userEvent.click(screen.getByRole("button", { name: "계속 고르기" }));
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "스타일A" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "건너뛰기" }));
+    await userEvent.click(await screen.findByRole("button", { name: "건너뛰고 사진 등록으로" }));
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+    expect(api.completeSession).not.toHaveBeenCalled();
+  });
+  it("대표 사진 더블탭은 해당 사진+스타일 저장, 위치 유지", async () => {
     setup();
-    await userEvent.dblClick(await screen.findByTestId(testId));
+    await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
     await waitFor(() =>
-      expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[index]).toHaveAttribute(
+      expect(screen.getAllByRole("button", { name: "이 사진 좋아요" })[0]).toHaveAttribute(
         "aria-pressed",
         "true",
       ),
     );
-    expect(api.putImagePreference).toHaveBeenCalledWith("a", imageId, true);
+    expect(api.putImagePreference).toHaveBeenCalledWith("a", "i1", true);
     expect(api.putStyleResponse.mock.calls).toEqual([["a", "liked"]]);
     expect(screen.getByRole("heading", { name: "스타일A" })).toBeInTheDocument();
     expect(screen.getByTestId("like-status")).toHaveAttribute("data-liked", "true");
@@ -625,10 +627,9 @@ describe("ONB-003-R1 사진 선호", () => {
     expect(api.putImagePreference).not.toHaveBeenCalled();
     expect(api.putStyleResponse).not.toHaveBeenCalled();
   });
-  it("대표·그리드 단일 탭은 저장·확대 없음", async () => {
+  it("대표 사진 단일 탭은 저장·확대 없음", async () => {
     setup();
     await userEvent.click(await screen.findByTestId("style-card-photo"));
-    await userEvent.click(screen.getByTestId("style-photo-i2"));
     expect(api.putImagePreference).not.toHaveBeenCalled();
     expect(api.putStyleResponse).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

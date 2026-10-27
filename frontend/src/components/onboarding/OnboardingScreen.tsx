@@ -342,6 +342,7 @@ export function OnboardingScreen({
   // 저장 대상이 아닌 스타일(콘텐츠 미준비/서버 미연결)은 카탈로그 기반 읽기 전용 상세로만 연다.
   // 서버 저장 위치·응답·선호는 건드리지 않는다.
   const [browseStyleId, setBrowseStyleId] = useState<string | null>(null);
+  const [skipOpen, setSkipOpen] = useState(false);
   const browse = browseStyleId
     ? (() => {
         for (const g of sections) {
@@ -776,23 +777,11 @@ export function OnboardingScreen({
                       session={session as SessionView}
                       styleId={activeId}
                       description={styleQuery.data?.description ?? null}
-                      images={styleQuery.data?.images ?? []}
                       busy={busy}
                       failed={!!error}
-                      onRespond={(response) => {
-                        setError(null);
-                        const i = order.indexOf(activeId);
-                        responseMutation.mutate({
-                          styleId: activeId,
-                          response,
-                          next: order[i + 1] ?? null,
-                        });
-                      }}
                       onNavigate={(id) => {
                         if (!busy) selectStyle(id);
                       }}
-                      onHeart={heartActive}
-                      onZoom={setZoom}
                     />
                   ) : null}
 
@@ -806,6 +795,39 @@ export function OnboardingScreen({
                   >
                     취향 확인하기
                   </Button>
+                  {/* Skips choosing tastes altogether (user, 2026-10-28): nothing is saved as an
+                      answer; the dialog says recommendations will be made without them. */}
+                  <Button
+                    variant="outline"
+                    className="skip-response mt-3 w-full"
+                    disabled={busy}
+                    onClick={() => setSkipOpen(true)}
+                  >
+                    건너뛰기
+                  </Button>
+                  <AlertDialog open={skipOpen} onOpenChange={setSkipOpen}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>취향 고르기를 건너뛸까요?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          취향을 고르지 않아도 괜찮아요. 등록한 옷과 조건에 맞춰 자동으로 추천해
+                          드릴게요. 지금까지 좋아요한 스타일이 있으면 함께 반영하고, 취향은 나중에
+                          언제든 다시 고를 수 있어요.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>계속 고르기</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => {
+                            track({ type: "skip_tastes" });
+                            onComplete();
+                          }}
+                        >
+                          건너뛰고 사진 등록으로
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </section>
@@ -978,34 +1000,22 @@ function StyleCard({
   session,
   styleId,
   description,
-  images,
   busy,
   failed,
-  onRespond,
   onNavigate,
-  onHeart,
-  onZoom,
 }: {
   session: SessionView;
   styleId: string;
   description: string | null;
-  images: StyleImage[];
   busy: boolean;
   failed: boolean;
-  onRespond: (r: StyleResponse) => void;
   onNavigate: (id: string) => void;
-  onHeart: (img: StyleImage, selected: boolean) => void;
-  onZoom: (img: StyleImage) => void;
 }) {
   const order = session.activeStyleOrder;
   const idx = order.indexOf(styleId);
   const name = session.styles.find((s) => s.id === styleId)?.name ?? "";
-  const current = session.responses.find((r) => r.styleId === styleId)?.response ?? null;
   const prev = order[idx - 1];
   const next = order[idx + 1];
-  const tap = useDoubleTap(busy || !order.includes(styleId), (img) => {
-    if (img && !isSelected(session, styleId, img)) onHeart(img, true);
-  });
   return (
     <article className={cn("mt-4", failed && "shake")}>
       <div className="swipe-footer">
@@ -1016,37 +1026,6 @@ function StyleCard({
       </div>
       {description && (
         <p className="px-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
-      )}
-      {images.length > 1 && (
-        <ul className="mt-4 grid grid-cols-2 gap-3">
-          {images.slice(1).map((img) => (
-            <li key={img.id} className="relative">
-              <div data-testid={`style-photo-${img.id}`} className="photo-double-tap" {...tap(img)}>
-                <img
-                  src={img.thumbnailUrl}
-                  alt={img.alt}
-                  loading="lazy"
-                  className="aspect-[3/4] w-full object-cover"
-                />
-              </div>
-              <PhotoHeart
-                image={img}
-                selected={isSelected(session, styleId, img)}
-                busy={busy}
-                onHeart={onHeart}
-              />
-              <Button
-                size="icon"
-                variant="secondary"
-                aria-label={`${img.alt || name} 크게 보기`}
-                className="absolute right-3 top-16 rounded-full"
-                onClick={() => onZoom(img)}
-              >
-                <Maximize2 />
-              </Button>
-            </li>
-          ))}
-        </ul>
       )}
       <div className="mt-4 flex items-center justify-between text-xs">
         <Button variant="ghost" disabled={!prev || busy} onClick={() => prev && onNavigate(prev)}>
@@ -1059,16 +1038,6 @@ function StyleCard({
           다음 →
         </Button>
       </div>
-      {/* The only answer button, at the very bottom (user, 2026-10-28); liking is a double tap. */}
-      <Button
-        variant="outline"
-        className="skip-response mt-6 w-full"
-        aria-pressed={current === "skipped"}
-        disabled={!order.includes(styleId) || busy}
-        onClick={() => onRespond("skipped")}
-      >
-        건너뛰기
-      </Button>
     </article>
   );
 }
