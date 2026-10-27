@@ -1354,6 +1354,8 @@ a:focus-visible {
 }
 .page-turn-page {
   position: relative;
+  /* Reaches the bottom of the screen, so a swipe anywhere below the content still turns it. */
+  min-height: calc(100svh - 140px);
   background: var(--background);
   transform-origin: left center;
   backface-visibility: hidden;
