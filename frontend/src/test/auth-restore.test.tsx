@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.addEventListener("auth-navigation", nav);
   vi.mocked(api.getRestorePending).mockResolvedValue({
-    deletionScheduledAt: "2026-11-26T03:00:00Z",
+    deletionScheduledAt: "2026-11-26T08:02:14.607Z",
   });
 });
 afterEach(() => {
@@ -41,7 +41,9 @@ describe("AUTH-004-R2 restore", () => {
   it("shows Korean deadline and restores to returnTo", async () => {
     vi.mocked(api.restoreAccount).mockResolvedValue({ user: { id: "u" }, returnTo: "/garment" });
     mount(<RestorePage />);
-    expect(await screen.findByText(/2026년 11월 26일까지 복구할 수/)).toBeVisible();
+    expect(
+      await screen.findByText(/2026년 11월 26일 오후 5:02\(한국 시간\)까지 기존 계정을 복구할 수/),
+    ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "탈퇴 취소하고 복구하기" }));
     await waitFor(() => expect(target()).toBe("/garment"));
   });
@@ -51,14 +53,18 @@ describe("AUTH-004-R2 restore", () => {
     expect(target()).toBe("/");
     expect(api.restoreAccount).not.toHaveBeenCalled();
   });
-  it("410 shows expiry and Kakao restart", async () => {
+  it("410 explains the confirmation expiry and offers only home navigation", async () => {
     vi.mocked(api.getRestorePending).mockRejectedValue(
       new ApiError({ status: 410, code: "RESTORE_EXPIRED", message: "" }),
     );
     mount(<RestorePage />);
-    expect(await screen.findByText("복구할 수 있는 시간이 지났어요.")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "카카오로 다시 시작" }));
-    expect(api.startKakao).toHaveBeenCalled();
+    expect(await screen.findByText(/복구 화면은 로그인 후 10분 동안만 열려 있어요/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "카카오로 다시 시작" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "처음으로" }));
+    expect(target()).toBe("/");
+    expect(api.startKakao).not.toHaveBeenCalled();
+    expect(api.restoreAccount).not.toHaveBeenCalled();
   });
   it("deletion dialog explains 30-day grace", async () => {
     vi.mocked(api.getMe).mockResolvedValue({
@@ -69,6 +75,6 @@ describe("AUTH-004-R2 restore", () => {
     vi.mocked(api.getConsentDocuments).mockResolvedValue({ documents: [] });
     mount(<AccountPage />);
     fireEvent.click(await screen.findByRole("button", { name: "회원 탈퇴" }));
-    expect(await screen.findByText(/30일 동안 보관했다가 모두 삭제돼요/)).toBeVisible();
+    expect(await screen.findByText(/30일 동안 보관돼요/)).toBeVisible();
   });
 });

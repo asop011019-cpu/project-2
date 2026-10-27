@@ -72,14 +72,51 @@ beforeEach(() => {
     session: { idleExpiresAt: "", absoluteExpiresAt: "" },
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 describe("AUTH-003 screens", () => {
+  it("requires fresh explicit confirmation each time the deletion dialog opens", async () => {
+    mount(<AccountPage />);
+    const open = await screen.findByRole("button", { name: "회원 탈퇴" });
+    fireEvent.click(open);
+    expect(
+      screen.getByRole("checkbox", { name: "위 내용을 확인했고 탈퇴합니다" }),
+    ).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "탈퇴하기" })).toBeDisabled();
+    fireEvent.click(screen.getByText("위 내용을 확인했고 탈퇴합니다"));
+    expect(screen.getByRole("button", { name: "탈퇴하기" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    fireEvent.click(open);
+    expect(
+      screen.getByRole("checkbox", { name: "위 내용을 확인했고 탈퇴합니다" }),
+    ).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "탈퇴하기" })).toBeDisabled();
+    expect(api.deleteAccount).not.toHaveBeenCalled();
+  });
+  it("estimates exactly 30 days from now in Korean date and time", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-10-27T08:02:14.607Z").getTime());
+    mount(<AccountPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "회원 탈퇴" }));
+    expect(await screen.findByText("예상 복구 마감: 2026년 11월 26일 오후 5:02")).toBeVisible();
+  });
+  it("keeps deletion pending until the API succeeds", async () => {
+    vi.mocked(api.deleteAccount).mockReturnValue(new Promise(() => {}));
+    mount(<AccountPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "회원 탈퇴" }));
+    fireEvent.click(screen.getByLabelText("위 내용을 확인했고 탈퇴합니다"));
+    fireEvent.click(screen.getByRole("button", { name: "탈퇴하기" }));
+    expect(await screen.findByRole("button", { name: "탈퇴 중…" })).toBeDisabled();
+    expect(api.deleteAccount).toHaveBeenCalledTimes(1);
+  });
   it("deletion requiring reauth only navigates after user action", async () => {
     vi.mocked(api.deleteAccount).mockRejectedValue(
       new ApiError({ status: 401, code: "REAUTH_REQUIRED", message: "" }),
     );
     mount(<AccountPage />);
     fireEvent.click(await screen.findByRole("button", { name: "회원 탈퇴" }));
+    fireEvent.click(screen.getByLabelText("위 내용을 확인했고 탈퇴합니다"));
     fireEvent.click(screen.getByRole("button", { name: "탈퇴하기" }));
     const retry = await screen.findByRole("button", { name: "카카오로 다시 로그인" });
     expect(api.startKakao).not.toHaveBeenCalled();

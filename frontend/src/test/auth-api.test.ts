@@ -9,10 +9,19 @@ import {
   deleteAccount,
   startKakao,
   kakaoStartUrl,
+  authMessage,
 } from "@/lib/auth-api";
 import { authErrorDestination, safeReturnTo } from "@/lib/auth-routing";
 afterEach(() => vi.unstubAllGlobals());
 describe("AUTH-003 API", () => {
+  it("explains restore confirmation expiry without a restart prompt", () => {
+    expect(authMessage("RESTORE_EXPIRED")).toBe("복구할 수 있는 시간이 지났어요.");
+  });
+  it("explains unavailable accounts and signup only after deletion", () => {
+    expect(authMessage("ACCOUNT_UNAVAILABLE")).toBe(
+      "탈퇴 처리 중인 계정이라 지금은 로그인할 수 없어요. 복구 기간(30일)이 지난 계정은 복구할 수 없고, 삭제가 끝나면 새로 가입할 수 있어요.",
+    );
+  });
   it("GETs include credentials without mutation header", async () => {
     const fetcher = vi
       .fn()

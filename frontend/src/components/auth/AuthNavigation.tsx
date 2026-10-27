@@ -19,7 +19,9 @@ export function AuthNavigation() {
       qc.clear();
       void router.navigate({ href: "/" }).then(() => {
         if ((event as CustomEvent<boolean>).detail)
-          toast.success("회원 탈퇴가 완료됐어요. 30일 안에 다시 로그인하면 복구할 수 있어요.");
+          toast.success(
+            "회원 탈퇴가 완료됐어요. 30일 안에 같은 카카오 계정으로 다시 로그인하면 기존 계정을 복구할 수 있어요.",
+          );
       });
     };
     window.addEventListener("auth-navigation", navigate);

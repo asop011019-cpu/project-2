@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -233,7 +234,15 @@ export function AccountPage() {
   });
   const qc = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [estimatedDeadline, setEstimatedDeadline] = useState<string | null>(null);
   const [reauth, setReauth] = useState(false);
+  useEffect(() => {
+    setDeleteConfirmed(false);
+    setEstimatedDeadline(
+      deleteOpen ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null,
+    );
+  }, [deleteOpen]);
   useEffect(() => {
     setDeleteOpen(new URLSearchParams(window.location.search).get("confirmDelete") === "1");
   }, []);
@@ -362,19 +371,57 @@ export function AccountPage() {
         </div>
       )}
       <AlertDialog open={deleteOpen && !!me.data} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[calc(100svh-2rem)] w-[calc(100%-2rem)] overflow-y-auto overscroll-contain">
           <AlertDialogHeader>
             <AlertDialogTitle>정말 탈퇴하시겠어요?</AlertDialogTitle>
-            <AlertDialogDescription>
-              탈퇴하면 바로 로그아웃되고 계정을 쓸 수 없어요. 취향 기록과 하의 사진·정보는 30일 동안
-              보관했다가 모두 삭제돼요. 30일 안에 다시 로그인하면 복구할 수 있어요.
+            <AlertDialogDescription asChild>
+              <div className="text-left">
+                <ul className="list-disc space-y-3 pl-5">
+                  <li>탈퇴하면 바로 로그아웃되고 계정을 쓸 수 없어요.</li>
+                  <li>
+                    취향 기록과 하의 사진·정보는 30일 동안 보관돼요. 그 안에 같은 카카오 계정으로
+                    다시 로그인하면 새로 가입하는 것이 아니라 기존 계정을 그대로 복구할 수 있어요.
+                  </li>
+                  <li>
+                    30일이 지나면 복구할 수 없어요. 보관한 정보는 순서대로 삭제되고, 삭제가 실패하면
+                    자동으로 다시 시도해요.
+                  </li>
+                  <li>30일이 지난 뒤 다시 가입하면 이전 기록이 없는 새 계정이 만들어져요.</li>
+                </ul>
+                {estimatedDeadline && (
+                  <p className="mt-4">예상 복구 마감: {formatKoreanDateTime(estimatedDeadline)}</p>
+                )}
+                <p className="mt-1 text-xs">
+                  탈퇴를 누른 시각 기준 예상이에요. 확정된 마감은 다시 로그인했을 때 복구 화면에서
+                  보여 드려요.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <label
+            htmlFor="delete-confirmation"
+            className="flex items-start gap-3 text-sm cursor-pointer"
+          >
+            <Checkbox
+              id="delete-confirmation"
+              className="mt-0.5"
+              checked={deleteConfirmed}
+              disabled={busy}
+              onCheckedChange={(checked) => setDeleteConfirmed(checked === true)}
+            />
+            <span>위 내용을 확인했고 탈퇴합니다</span>
+          </label>
           <ErrorNotice error={remove.error} />
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>취소</AlertDialogCancel>
-            <Button variant="destructive" disabled={busy} onClick={() => remove.mutate()}>
-              {remove.isPending ? "삭제 중…" : "탈퇴하기"}
+            <Button
+              variant="destructive"
+              disabled={busy || !deleteConfirmed}
+              onClick={() => {
+                if (deleteConfirmed && !busy) remove.mutate();
+              }}
+            >
+              {remove.isPending ? "탈퇴 중…" : "탈퇴하기"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -383,7 +430,7 @@ export function AccountPage() {
   );
 }
 
-export function formatKoreanDate(iso: string) {
+function formatKoreanDateTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return new Intl.DateTimeFormat("ko-KR", {
@@ -391,6 +438,9 @@ export function formatKoreanDate(iso: string) {
     year: "numeric",
     month: "long",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   }).format(d);
 }
 
@@ -415,10 +465,11 @@ export function RestorePage() {
       {expired ? (
         <>
           <p role="alert" className="auth-error">
-            복구할 수 있는 시간이 지났어요.
+            복구 확인 시간이 지났어요. 복구 화면은 로그인 후 10분 동안만 열려 있어요. 복구
+            기간(30일) 안이라면 다시 로그인해서 복구할 수 있고, 기간이 지났다면 복구할 수 없어요.
           </p>
-          <Button className="kakao-button mt-8 w-full" onClick={() => startKakao("/")}>
-            카카오로 다시 시작
+          <Button className="mt-8 w-full" onClick={() => move("/")}>
+            처음으로
           </Button>
         </>
       ) : (
@@ -428,8 +479,8 @@ export function RestorePage() {
             <p role="status">복구 정보를 불러오는 중이에요.</p>
           ) : pending.data ? (
             <p className="mb-8">
-              탈퇴한 계정이에요. {formatKoreanDate(pending.data.deletionScheduledAt)}까지 복구할 수
-              있어요.
+              탈퇴한 계정이에요. {formatKoreanDateTime(pending.data.deletionScheduledAt)}(한국
+              시간)까지 기존 계정을 복구할 수 있어요. 이 시각이 지나면 복구할 수 없어요.
             </p>
           ) : (
             <Button variant="outline" className="w-full" onClick={() => void pending.refetch()}>

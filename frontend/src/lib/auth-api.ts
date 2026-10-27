@@ -75,7 +75,8 @@ export function authMessage(error: unknown): string {
     OAUTH_STATE_INVALID: "로그인 시간이 초과됐거나 요청을 확인할 수 없어요. 다시 로그인해 주세요.",
     OAUTH_PROVIDER_ERROR: "카카오에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.",
     AUTH_PROVIDER_NOT_CONFIGURED: "카카오 로그인 연결이 아직 준비되지 않았어요.",
-    ACCOUNT_UNAVAILABLE: "탈퇴 정리 중인 계정이에요. 잠시 후 다시 로그인해 주세요.",
+    ACCOUNT_UNAVAILABLE:
+      "탈퇴 처리 중인 계정이라 지금은 로그인할 수 없어요. 복구 기간(30일)이 지난 계정은 복구할 수 없고, 삭제가 끝나면 새로 가입할 수 있어요.",
     LOGIN_FAILED: "로그인을 완료하지 못했어요. 다시 시도해 주세요.",
     SIGNUP_EXPIRED: "가입 시간이 만료됐어요. 카카오로 다시 로그인해 주세요.",
     CONSENT_REQUIRED: "필수 항목에 모두 동의해 주세요.",
@@ -84,7 +85,7 @@ export function authMessage(error: unknown): string {
     REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN: "필수 동의는 이 화면에서 철회할 수 없어요.",
     REAUTH_REQUIRED: "보안을 위해 카카오로 다시 로그인해 주세요.",
     AUTH_REQUIRED: "로그인이 필요해요.",
-    RESTORE_EXPIRED: "복구할 수 있는 시간이 지났어요. 카카오로 다시 시작해 주세요.",
+    RESTORE_EXPIRED: "복구할 수 있는 시간이 지났어요.",
   };
   return (
     messages[code] ??
