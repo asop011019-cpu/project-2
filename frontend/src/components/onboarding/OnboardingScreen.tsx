@@ -713,6 +713,7 @@ export function OnboardingScreen({
                     <StylePager
                       genres={pagerGenres}
                       currentId={shownId}
+                      busy={busy}
                       onSelect={(id) => {
                         if (!busy) selectStyle(id);
                       }}

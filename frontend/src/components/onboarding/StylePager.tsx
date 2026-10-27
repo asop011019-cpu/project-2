@@ -22,12 +22,15 @@ const reducedMotion = () =>
 export function StylePager({
   genres,
   currentId,
+  busy,
   onSelect,
   renderCover,
   preview,
 }: {
   genres: PagerGenre[];
   currentId: string | null;
+  /** A save is in flight; a slide made meanwhile is either applied after it or undone. */
+  busy: boolean;
   onSelect: (id: string) => void;
   /** The interactive photo (heart, zoom, double tap) for the current, answerable card. */
   renderCover: (id: string) => ReactNode;
@@ -41,6 +44,12 @@ export function StylePager({
   const frame = useRef(0);
   // While the view scrolls to a position the app chose, its scroll events are not user choices.
   const steerUntil = useRef(0);
+  // The style the user last slid to, until the app has taken it (or turned it down).
+  const requested = useRef<string | null>(null);
+  // Same genres and styles, even if the array is new on every render.
+  const genreKey = genres
+    .map((g) => `${g.id}:${g.styles.map((st) => `${st.id}${st.ready ? "+" : "-"}`).join(",")}`)
+    .join("|");
 
   const genreOf = (id: string | null) =>
     id ? genres.findIndex((g) => g.styles.some((s) => s.id === id)) : -1;
@@ -106,8 +115,12 @@ export function StylePager({
 
   // Follow the app's current style (a list pick, the previous/next buttons, or the next style
   // after an answer), so the card in the middle always matches the name, text and photos shown.
+  // A slide the app did not take (a failed or ignored save) is undone, so the middle card never
+  // shows a style other than the current one.
   useLayoutEffect(() => {
     if (!currentId) return;
+    if (requested.current && busy) return;
+    requested.current = null;
     const gi = genreOf(currentId);
     if (gi < 0) return;
     lastInGenre.current.set(genres[gi]!.id, currentId);
@@ -120,15 +133,23 @@ export function StylePager({
     window.clearTimeout(settle.current);
     scrollToCard(gi, currentId, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, genres]);
+  }, [currentId, genreKey, busy]);
 
   useEffect(() => {
     tracks.current.forEach(applyDepth);
-    return () => {
+  }, [applyDepth, genreKey]);
+  useEffect(
+    () => () => {
       window.clearTimeout(settle.current);
       cancelAnimationFrame(frame.current);
-    };
-  }, [applyDepth, genres]);
+    },
+    [],
+  );
+
+  const choose = (id: string) => {
+    requested.current = id;
+    onSelect(id);
+  };
 
   const onPagerScroll = () =>
     afterSettle(() => {
@@ -141,7 +162,7 @@ export function StylePager({
         lastInGenre.current.get(genre.id) ??
         genre.styles.find((s) => s.ready)?.id ??
         genre.styles[0]?.id;
-      if (id) onSelect(id);
+      if (id) choose(id);
     });
 
   const onTrackScroll = (genre: PagerGenre) => {
@@ -153,7 +174,7 @@ export function StylePager({
       const id = centreOf(track);
       if (!id) return;
       lastInGenre.current.set(genre.id, id);
-      if (id !== currentId) onSelect(id);
+      if (id !== currentId) choose(id);
     });
   };
 
@@ -204,7 +225,7 @@ export function StylePager({
                   onClick={() => {
                     if (isCurrent) return;
                     lastInGenre.current.set(genre.id, style.id);
-                    onSelect(style.id);
+                    choose(style.id);
                   }}
                 >
                   {isCurrent && style.ready ? (
