@@ -132,6 +132,20 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
      token_hash TEXT PRIMARY KEY CHECK(length(token_hash)=64), user_id TEXT NOT NULL,
      return_to TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
    ) STRICT;`,
+  // v8 (GAR-002): the reference garment may also be a top or an outer (still one per account),
+  // and the user's confirmed attributes are kept apart from the garment row. confirmed_image is
+  // the photo file the attributes were confirmed for; a new photo or type asks to confirm again.
+  // SQLite cannot widen a CHECK in place, so the table is rebuilt with the same column order.
+  `CREATE TABLE garments_v8 (session_id TEXT PRIMARY KEY REFERENCES onboarding_sessions(id) ON DELETE CASCADE, id TEXT NOT NULL, garment_type TEXT NOT NULL CHECK(garment_type IN ('pants','skirt','top','outer')), brand TEXT, product_name TEXT, purchase_url TEXT, filename TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;
+   INSERT INTO garments_v8 SELECT session_id,id,garment_type,brand,product_name,purchase_url,filename,width,height,created_at,updated_at FROM garments;
+   DROP TABLE garments;
+   ALTER TABLE garments_v8 RENAME TO garments;
+   CREATE TABLE garment_attributes (
+     session_id TEXT PRIMARY KEY REFERENCES garments(session_id) ON DELETE CASCADE,
+     garment_type TEXT NOT NULL CHECK(garment_type IN ('pants','skirt','top','outer')),
+     vocabulary_version TEXT NOT NULL, values_json TEXT NOT NULL, raw_text TEXT,
+     confirmed_image TEXT NOT NULL, updated_at TEXT NOT NULL
+   ) STRICT;`,
 ];
 
 /** Applies pending migrations; `target` (tests only) stops at an older schema version. */

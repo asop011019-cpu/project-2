@@ -74,3 +74,23 @@ DB 마이그레이션 v3는 기존 데이터를 유지하며 세션당 한 행�
 만료된 세션은 이미지 접근이 차단되지만 잔존 사진의 자동 정리 스케줄러는 없다. 영구 볼륨, 만료 데이터 및 고아 파일 정리 정책은 운영 연결 조건이다. 사진·DB를 Git에 추가하지 않는다.
 
 추가 의존성: `@fastify/multipart`는 제한 있는 스트리밍 multipart 파싱, `sharp`는 실제 디코딩·픽셀 제한·EXIF 방향 보정·메타데이터 제거를 담당한다. sharp의 플랫폼별 네이티브 바이너리 설치 및 보안 업데이트 관리가 필요하다. 외부 유료 서비스는 추가하지 않는다.
+
+## GAR-002 기준 의류 확장과 사용자 확인 속성 (2026-10-27)
+
+### 호환 방안(비파괴)
+- 계정당 한 벌 그대로. `garmentType`에 `top`(상의)·`outer`(아우터)를 추가(`pants`·`skirt` 유지). 기존 PUT의 strict metadata·multipart 형식, GET·DELETE·image 경로, 오류 코드는 그대로이며 기존 하의 요청은 같은 결과.
+- GET·PUT 응답의 garment에 `attributes` 필드 추가(없으면 null). 기존 필드 불변.
+- DB v8: SQLite는 CHECK를 바로 넓힐 수 없어 `garments`를 같은 열 순서로 다시 만들고 기존 행을 그대로 옮김. 사용자 확인 속성은 새 표 `garment_attributes`(의류 행 삭제 시 함께 삭제 → 의류 삭제·진행 삭제·탈퇴 삭제가 그대로 적용).
+- AI 추정은 만들지 않음. 이 필드는 사용자가 직접 고른 값만 담고, 추정은 이후 ANL-001의 별도 필드로 분리.
+- 나중에 '내 옷장'으로 넓힐 때 의류 식별자·소유자(진행 세션)·사진 파일·속성 연결을 그대로 재사용할 수 있게 속성을 의류 행에 1:1로만 연결함. 여러 벌 구조는 만들지 않음.
+
+### PUT /api/onboarding/session/garment/attributes (JSON)
+```json
+{"garmentType":"pants","values":{"color":{"base":"navy","tone":"dark","pattern":"solid","denimWash":"raw_indigo"},"materialLook":"denim","construction":["five_pocket"],"silhouette":"straight","length":"full"},"rawText":"조드퍼즈 느낌"}
+```
+- `garmentType`은 현재 저장된 종류와 같아야 함(다르면 409 `GARMENT_TYPE_CHANGED`). 의류가 없으면 404 `GARMENT_NOT_FOUND`. 어휘 밖 값·다른 종류의 축·중복·알 수 없는 키는 400 `INVALID_INPUT`(issues 경로는 `values.…`).
+- 축(어휘 `garment-vocab-0.2`): 공통 `color{base,tone,pattern,denimWash}`·`materialLook` / 바지 `construction[]`·`silhouette`·`length` / 치마 `skirtStructure[]`·`silhouette`·`length` / 상의 `topType`·`neckline`·`sleeve`·`topFit`·`topLength` / 아우터 `outerType`·`neckline`·`sleeve`·`topFit`·`topLength`. 섬유 혼용률 축은 없음(사진으로 확정 금지, 사용자가 `rawText`에 적을 수 있음, 200자).
+- null·빈 배열은 "응답 안 함"으로 저장하지 않고, `unknown`·`other`는 답으로 저장. 응답 `attributes`: `{garmentType, vocabularyVersion, values, rawText, needsConfirmation, updatedAt}`.
+- `needsConfirmation`: 사진을 바꾸거나 종류를 바꾼 뒤 아직 다시 저장하지 않음. 정보(브랜드 등)만 수정하면 유지.
+- 종류 변경(기존 PUT): 공통 축(`color`·`materialLook`)과 `rawText`만 남기고 이전 종류의 축은 삭제.
+- 미확정: 실루엣·길이 값은 어휘에서 바지·치마 공통 목록이라 그대로 허용(종류별 세분은 큐레이터 확인 필요). `rubber_synthetic`(신발 소재)은 신발이 범위 밖이라 제외.

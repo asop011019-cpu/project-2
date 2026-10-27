@@ -18,6 +18,14 @@ import type { AppConfig } from "../../config.ts";
 import type { OnboardingService } from "../onboarding/service.ts";
 import type { AuthGuard } from "../auth/routes.ts";
 import { DomainError } from "../onboarding/domain.ts";
+import {
+  GARMENT_TYPES,
+  VOCABULARY_VERSION,
+  keepCommonValues,
+  parseAttributeValues,
+  type AttributeValues,
+  type GarmentType,
+} from "./attributes.ts";
 
 const optionalText = (max: number) =>
   z
@@ -28,7 +36,7 @@ const optionalText = (max: number) =>
     .transform((v) => v || null);
 const metadataSchema = z
   .object({
-    garmentType: z.enum(["pants", "skirt"]),
+    garmentType: z.enum(GARMENT_TYPES),
     brand: optionalText(100),
     productName: optionalText(200),
     purchaseUrl: optionalText(2048).refine((value) => {
@@ -48,9 +56,24 @@ const invalid = (field: string) =>
   new ZodError([
     { code: "custom", path: [field], message: "입력 내용을 확인해 주세요." },
   ]);
+const attributesBody = z
+  .object({
+    garmentType: z.enum(GARMENT_TYPES),
+    values: z.record(z.string(), z.unknown()),
+    rawText: optionalText(200),
+  })
+  .strict();
+type AttributesRow = {
+  garmentType: GarmentType;
+  vocabularyVersion: string;
+  valuesJson: string;
+  rawText: string | null;
+  confirmedImage: string;
+  updatedAt: string;
+};
 type Row = {
   id: string;
-  garmentType: "pants" | "skirt";
+  garmentType: GarmentType;
   brand: string | null;
   productName: string | null;
   purchaseUrl: string | null;
@@ -82,11 +105,32 @@ export function registerGarmentRoutes(
     guard(r, reply).userId;
   const existing = (r: FastifyRequest, reply: FastifyReply) =>
     service.sessionIdForUser(user(r, reply));
-  const view = (row: Row | undefined) =>
+  const getAttributes = (id: string) =>
+    db
+      .prepare(
+        `SELECT garment_type AS garmentType,vocabulary_version AS vocabularyVersion,values_json AS valuesJson,raw_text AS rawText,confirmed_image AS confirmedImage,updated_at AS updatedAt FROM garment_attributes WHERE session_id=?`,
+      )
+      .get(id) as AttributesRow | undefined;
+  // Attributes the user confirmed. needsConfirmation: the photo or the garment type changed since.
+  const attributesView = (row: Row, saved: AttributesRow | undefined) =>
+    saved
+      ? {
+          garmentType: saved.garmentType,
+          vocabularyVersion: saved.vocabularyVersion,
+          values: JSON.parse(saved.valuesJson) as AttributeValues,
+          rawText: saved.rawText,
+          needsConfirmation:
+            saved.confirmedImage !== row.filename ||
+            saved.garmentType !== row.garmentType,
+          updatedAt: saved.updatedAt,
+        }
+      : null;
+  const view = (row: Row | undefined, id: string) =>
     row
       ? (({ filename: _, ...data }) => ({
           ...data,
           imageUrl: "/api/onboarding/session/garment/image",
+          attributes: attributesView(row, getAttributes(id)),
         }))(row)
       : null;
   const url = "/api/onboarding/session/garment";
@@ -106,7 +150,7 @@ export function registerGarmentRoutes(
     });
     scoped.get(url, (r, reply) => {
       const id = existing(r, reply);
-      return { garment: id ? view(get(id)) : null };
+      return { garment: id ? view(get(id), id) : null };
     });
     scoped.get(url + "/image", (r, reply) => {
       z.object({ v: z.string().optional() }).strict().parse(r.query);
@@ -243,6 +287,16 @@ export function registerGarmentRoutes(
           old?.createdAt ?? now,
           now,
         );
+        // A new garment type keeps only the attributes every type shares (color, material look,
+        // the user's own words) so axes of the old type never mix into the new one.
+        const saved = old && getAttributes(id);
+        if (old && saved && old.garmentType !== data.garmentType)
+          db.prepare(
+            "UPDATE garment_attributes SET values_json=? WHERE session_id=?",
+          ).run(
+            JSON.stringify(keepCommonValues(JSON.parse(saved.valuesJson))),
+            id,
+          );
         if (normalized && old) restore = files.remove(old.filename);
         db.exec("COMMIT");
       } catch (e) {
@@ -251,7 +305,50 @@ export function registerGarmentRoutes(
         if (written) unlinkSync(path.join(root, filename));
         throw e;
       }
-      return { garment: view(get(id)) };
+      return { garment: view(get(id), id) };
+    });
+    // Saves the attributes the user confirmed for the current photo and garment type.
+    scoped.put(url + "/attributes", (r, reply) => {
+      const body = attributesBody.parse(r.body);
+      const id = existing(r, reply);
+      const row = id ? get(id) : undefined;
+      if (!id || !row)
+        throw new DomainError(
+          404,
+          "GARMENT_NOT_FOUND",
+          "먼저 옷 사진을 등록해 주세요.",
+        );
+      if (body.garmentType !== row.garmentType)
+        throw new DomainError(
+          409,
+          "GARMENT_TYPE_CHANGED",
+          "옷 종류가 바뀌었어요. 화면을 새로 고친 뒤 다시 저장해 주세요.",
+        );
+      let values: AttributeValues;
+      try {
+        values = parseAttributeValues(row.garmentType, body.values);
+      } catch (error) {
+        if (error instanceof ZodError)
+          throw new ZodError(
+            error.issues.map((issue) => ({
+              ...issue,
+              path: ["values", ...issue.path],
+            })),
+          );
+        throw error;
+      }
+      db.prepare(
+        `INSERT INTO garment_attributes VALUES(?,?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET garment_type=excluded.garment_type,vocabulary_version=excluded.vocabulary_version,values_json=excluded.values_json,raw_text=excluded.raw_text,confirmed_image=excluded.confirmed_image,updated_at=excluded.updated_at`,
+      ).run(
+        id,
+        row.garmentType,
+        VOCABULARY_VERSION,
+        JSON.stringify(values),
+        body.rawText,
+        row.filename,
+        service.now().toISOString(),
+      );
+      return { garment: view(row, id) };
     });
     scoped.delete(url, (r, reply) => {
       const id = existing(r, reply);
