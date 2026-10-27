@@ -43,6 +43,14 @@ describe("DES-002", () => {
     expect(screen.getByRole("button", { name: "남성복 선택, 24개 스타일" })).toBeInTheDocument();
     expect(screen.queryByTestId("curtain")).not.toBeInTheDocument();
   });
+  it("상단에 단계 수 표시가 없고 내 계정 아이콘은 오른쪽 끝", async () => {
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: "내 취향 찾기" }));
+    const account = await screen.findByRole("button", { name: "내 계정" });
+    const header = account.closest("header")!;
+    expect(header.lastElementChild).toBe(account);
+    expect(header).not.toHaveTextContent("/ 03");
+  });
   it("empty SITE_URL emits no sitemap directive", () => {
     expect(robotsText("", false)).not.toContain("Sitemap:");
     expect(robotsText("", false)).toContain("Allow: /");
