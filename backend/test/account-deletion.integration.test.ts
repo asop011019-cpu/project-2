@@ -267,3 +267,32 @@ test("without a Kakao admin key the data is deleted but the unlink step waits, k
     attempts: 2,
   });
 });
+
+test("a delayed unlink is skipped when the same Kakao member has already joined again", async (t) => {
+  const c = await context();
+  t.after(c.cleanup);
+  const old = await member(c, "9300");
+  c.kakao.unlinkMode = "not_configured";
+  assert.equal(
+    (await old.user.request("DELETE", "/api/auth/account", {})).statusCode,
+    204,
+  );
+  assert.equal(job(c, old.userId).stage, "data_deleted");
+  // The person signs up again before the admin key is configured.
+  const fresh = await member(c, "9300");
+  assert.notEqual(fresh.userId, old.userId);
+  c.kakao.unlinkMode = "ok";
+  await c.auth.processDeletions();
+  assert.deepEqual(job(c, old.userId), {
+    stage: "done",
+    subject: null,
+    error: null,
+    attempts: 1,
+  });
+  // Unlinking now would have cut the new account's Kakao connection.
+  assert.deepEqual(c.kakao.unlinked, []);
+  assert.equal(
+    (await fresh.user.request("GET", "/api/auth/me")).statusCode,
+    200,
+  );
+});

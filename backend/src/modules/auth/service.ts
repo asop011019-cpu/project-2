@@ -690,7 +690,16 @@ export class AuthService {
           });
           job.stage = "data_deleted";
         }
-        if (job.subject) {
+        // If the same Kakao member has already joined again, unlinking now would cut the new
+        // account's connection; the old account's data is gone, so skip the unlink.
+        const rejoined =
+          job.subject &&
+          this.db
+            .prepare(
+              "SELECT 1 FROM user_identities WHERE provider='kakao' AND provider_subject=?",
+            )
+            .get(job.subject);
+        if (job.subject && !rejoined) {
           const result = this.provider
             ? await this.provider.unlink(job.subject)
             : "not_configured";
