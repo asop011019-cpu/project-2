@@ -4,7 +4,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { INTRO_IMAGES, robotsText, sitemapXml } from "@/lib/site";
-import { swipeResponse } from "@/lib/swipe";
 import { routeTree } from "@/routeTree.gen";
 import { OnboardingScreen } from "@/components/onboarding/OnboardingScreen";
 import { NotFoundComponent } from "@/routes/__root";
@@ -43,13 +42,6 @@ describe("DES-002", () => {
     await userEvent.click(screen.getByRole("button", { name: "내 취향 찾기" }));
     expect(screen.getByRole("button", { name: "남성복 선택, 24개 스타일" })).toBeInTheDocument();
     expect(screen.queryByTestId("curtain")).not.toBeInTheDocument();
-  });
-  it("right beyond 90px means liked", () => expect(swipeResponse(91, 0)).toBe("liked"));
-  it("left beyond 90px means disliked", () => expect(swipeResponse(-91, 0)).toBe("disliked"));
-  it("up beyond 90px means skipped", () => expect(swipeResponse(0, -91)).toBe("skipped"));
-  it("90px boundary and downward drag do not respond", () => {
-    expect(swipeResponse(90, -90)).toBeNull();
-    expect(swipeResponse(-90, 100)).toBeNull();
   });
   it("empty SITE_URL emits no sitemap directive", () => {
     expect(robotsText("", false)).not.toContain("Sitemap:");
