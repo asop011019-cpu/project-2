@@ -38,6 +38,8 @@ npm start
 
 ## 협업 문서
 
+- [현재 Goal·Main/Sub 작업 계획](docs/WORK-LIST.md)
+- [배포 직전 할 일](docs/RELEASE-CHECKLIST.md)
 - [Gemini에 복사해서 전달할 프롬프트](docs/GEMINI_PROMPT.md)
 - [Gemini UI 인계와 호출 흐름](docs/GEMINI_HANDOFF.md)
 - [정확한 API 경로·요청·응답·오류](docs/API.md)
