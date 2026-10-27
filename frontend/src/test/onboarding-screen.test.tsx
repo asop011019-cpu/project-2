@@ -212,7 +212,7 @@ describe("OnboardingScreen", () => {
     renderScreen();
     for (const [label, value] of [
       ["좋아요", "liked"],
-      ["별로", "disliked"],
+      ["건너뛰기", "skipped"],
     ] as const) {
       if (value === "liked") {
         await userEvent.dblClick(await screen.findByTestId("style-card-photo"));
@@ -222,7 +222,7 @@ describe("OnboardingScreen", () => {
       await waitFor(() => expect(api.putStyleResponse.mock.calls.at(-1)?.[1]).toBe(value));
     }
     expect(api.putStyleResponse.mock.calls[0]).toEqual(["a", "liked", undefined]);
-    expect(api.putStyleResponse.mock.calls[1]).toEqual(["a", "disliked", "b"]);
+    expect(api.putStyleResponse.mock.calls[1]).toEqual(["a", "skipped", "b"]);
   });
 
   it("응답 저장 실패 시 상태 미반영", async () => {
@@ -588,12 +588,15 @@ describe("ONB-003-R1 사진 선호", () => {
     });
     renderScreen();
   }
-  it("하단 좋아요 버튼 없음", async () => {
+  it("응답 버튼은 맨 아래 건너뛰기 하나뿐 (좋아요는 두 번 탭, 별로 버튼 없음)", async () => {
     setup();
     await screen.findByRole("heading", { name: "스타일A" });
     expect(screen.queryByRole("button", { name: /^좋아요$/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "별로" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "건너뛰기" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "별로" })).not.toBeInTheDocument();
+    const skip = screen.getByRole("button", { name: "건너뛰기" });
+    const next = screen.getByRole("button", { name: "다음 →" });
+    // Follows the previous/next row in reading order.
+    expect(next.compareDocumentPosition(skip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
   it.each([
     ["style-card-photo", "i1", 0],

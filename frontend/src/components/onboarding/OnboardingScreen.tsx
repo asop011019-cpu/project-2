@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Heart, Maximize2, X, ArrowUp, ArrowLeft } from "lucide-react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Heart, Maximize2, ArrowLeft } from "lucide-react";
 
 import {
   AlertDialog,
@@ -42,21 +42,15 @@ import {
 } from "@/lib/onboarding-view";
 import { cn } from "@/lib/utils";
 import { INTRO_IMAGES } from "@/lib/site";
-import { swipeResponse } from "@/lib/swipe";
 import { track } from "@/lib/track";
 import { IntroScreen } from "./IntroScreen";
 import { PageTurn } from "@/components/motion/PageTurn";
 import { PreferenceRail } from "./PreferenceRail";
+import { StylePager, type PagerGenre } from "./StylePager";
 import { EditorialFrame } from "./EditorialFrame";
 
 export const SESSION_KEY = ["onboarding", "session"] as const;
 type Step = "category" | "explore" | "summary";
-
-const RESPONSES: { value: StyleResponse; label: string }[] = [
-  { value: "liked", label: "좋아요" },
-  { value: "disliked", label: "별로" },
-  { value: "skipped", label: "건너뛰기" },
-];
 
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
@@ -375,6 +369,68 @@ export function OnboardingScreen({
     heartMutation.isPending ||
     completeMutation.isPending ||
     resetMutation.isPending;
+  // ONB-3D-001: genres as vertical pages, their styles as cards. Answerable styles come from the
+  // session's fixed order; the others stay "사진 준비 중" and only open the read-only detail.
+  const pagerGenres: PagerGenre[] = (() => {
+    const genres: PagerGenre[] = sections.map((g) => ({
+      id: g.id,
+      name: g.name,
+      styles: g.styles.map((st) => ({
+        id: st.id,
+        name: st.name,
+        ready: online && order.includes(st.id),
+      })),
+    }));
+    // Every answerable style gets a card even if the catalogue view lacks it.
+    if (online && session)
+      for (const id of order) {
+        if (genres.some((g) => g.styles.some((st) => st.id === id))) continue;
+        const meta = session.styles.find((st) => st.id === id);
+        const genreId = meta?.genreGroupId ?? "other";
+        let genre = genres.find((g) => g.id === genreId);
+        if (!genre) {
+          genre = { id: genreId, name: "스타일", styles: [] };
+          genres.push(genre);
+        }
+        genre.styles.push({ id, name: meta?.name ?? id, ready: true });
+      }
+    return genres.filter((g) => g.styles.length > 0);
+  })();
+  // Load photos for the cards in view first: the neighbours of the current card, and the first
+  // card of the genres just above and below.
+  const previewIds = (() => {
+    const gi = pagerGenres.findIndex((g) => g.styles.some((st) => st.id === shownId));
+    if (gi < 0) return [];
+    const ids: string[] = [];
+    const row = pagerGenres[gi]!.styles;
+    const si = row.findIndex((st) => st.id === shownId);
+    for (const st of row.slice(Math.max(0, si - 1), si + 2)) if (st.ready) ids.push(st.id);
+    for (const g of [pagerGenres[gi - 1], pagerGenres[gi + 1]]) {
+      const first = g?.styles.find((st) => st.ready);
+      if (first) ids.push(first.id);
+    }
+    return ids.filter((id) => id !== activeId);
+  })();
+  const previewQueries = useQueries({
+    queries: previewIds.map((id) => ({
+      queryKey: ["onboarding", "style", id],
+      queryFn: () => getStyle(id),
+      retry: false,
+      staleTime: 60_000,
+    })),
+  });
+  const previewImage = (id: string) => {
+    if (id === activeId) return styleQuery.data?.images[0];
+    const index = previewIds.indexOf(id);
+    return (index >= 0 ? previewQueries[index]?.data : undefined)?.images[0];
+  };
+  const heartActive = (img: StyleImage, selected: boolean) => {
+    if (!activeId || busy || photoSaveLock.current) return;
+    photoSaveLock.current = true;
+    setError(null);
+    heartMutation.mutate({ styleId: activeId, imageId: img.id, selected });
+  };
+
   const selectStyle = (id: string) => {
     if (selectBusy || photoSaveLock.current) return;
     if (!online || !order.includes(id)) {
@@ -653,6 +709,34 @@ export function OnboardingScreen({
                       다시 시도
                     </Button>
                   )}
+                  {online && session && order.length > 0 && pagerGenres.length > 0 && (
+                    <StylePager
+                      genres={pagerGenres}
+                      currentId={shownId}
+                      onSelect={(id) => {
+                        if (!busy) selectStyle(id);
+                      }}
+                      preview={previewImage}
+                      renderCover={(id) => (
+                        <StyleCover
+                          session={session}
+                          styleId={id}
+                          images={styleQuery.data?.images ?? []}
+                          busy={busy}
+                          onDoubleLike={() => {
+                            setError(null);
+                            responseMutation.mutate({
+                              styleId: id,
+                              response: "liked",
+                              next: undefined,
+                            });
+                          }}
+                          onHeart={heartActive}
+                          onZoom={setZoom}
+                        />
+                      )}
+                    />
+                  )}
                   {browse ? (
                     <article
                       className="mt-4 bg-secondary p-6"
@@ -670,12 +754,13 @@ export function OnboardingScreen({
                       <p className="mt-2 text-sm text-muted-foreground">
                         {online
                           ? "이 스타일은 아직 응답할 수 없어요. 준비되면 여기서 바로 고를 수 있어요."
-                          : "저장 연결이 준비되면 스타일마다 좋아요·별로로 응답할 수 있어요."}
+                          : "저장 연결이 준비되면 스타일마다 좋아요(두 번 탭)나 건너뛰기로 응답할 수 있어요."}
                       </p>
                     </article>
                   ) : !online ? (
                     <p className="mt-4 border border-dashed border-input p-5 text-sm text-muted-foreground">
-                      저장 연결이 준비되면 스타일마다 좋아요·별로로 응답할 수 있어요.
+                      저장 연결이 준비되면 스타일마다 좋아요(두 번 탭)나 건너뛰기로 응답할 수
+                      있어요.
                     </p>
                   ) : order.length === 0 ? (
                     <div role="status" className="mt-4 bg-secondary p-6">
@@ -689,6 +774,7 @@ export function OnboardingScreen({
                     <StyleCard
                       session={session as SessionView}
                       styleId={activeId}
+                      description={styleQuery.data?.description ?? null}
                       images={styleQuery.data?.images ?? []}
                       busy={busy}
                       failed={!!error}
@@ -701,23 +787,10 @@ export function OnboardingScreen({
                           next: order[i + 1] ?? null,
                         });
                       }}
-                      onDoubleLike={() => {
-                        setError(null);
-                        responseMutation.mutate({
-                          styleId: activeId,
-                          response: "liked",
-                          next: undefined,
-                        });
-                      }}
                       onNavigate={(id) => {
                         if (!busy) selectStyle(id);
                       }}
-                      onHeart={(img, selected) => {
-                        if (busy || photoSaveLock.current) return;
-                        photoSaveLock.current = true;
-                        setError(null);
-                        heartMutation.mutate({ styleId: activeId, imageId: img.id, selected });
-                      }}
+                      onHeart={heartActive}
                       onZoom={setZoom}
                     />
                   ) : null}
@@ -792,15 +865,13 @@ export function OnboardingScreen({
   );
 }
 
-function StyleCard({
+/** The photo of the current style in the pager: double tap likes it, heart and zoom are separate. */
+function StyleCover({
   session,
   styleId,
   images,
   busy,
-  failed,
-  onRespond,
   onDoubleLike,
-  onNavigate,
   onHeart,
   onZoom,
 }: {
@@ -808,9 +879,119 @@ function StyleCard({
   styleId: string;
   images: StyleImage[];
   busy: boolean;
+  onDoubleLike: () => void;
+  onHeart: (img: StyleImage, selected: boolean) => void;
+  onZoom: (img: StyleImage) => void;
+}) {
+  const order = session.activeStyleOrder;
+  const name = session.styles.find((s) => s.id === styleId)?.name ?? "";
+  const current = session.responses.find((r) => r.styleId === styleId)?.response ?? null;
+  const primary = images[0];
+  const tap = useDoubleTap(busy || !order.includes(styleId), (img) => {
+    if (img) {
+      if (!isSelected(session, styleId, img)) onHeart(img, true);
+    } else if (current !== "liked") onDoubleLike();
+  });
+  return (
+    <div
+      className="swipe-cover"
+      aria-describedby="double-tap-hint"
+      data-testid="style-card-photo"
+      {...tap(primary)}
+    >
+      <span id="double-tap-hint" className="sr-only">
+        두 번 탭하면 좋아요
+      </span>
+      {primary ? (
+        <div
+          className="swipe-photo"
+          data-testid="style-card-frame"
+          style={{
+            aspectRatio:
+              primary.width > 0 && primary.height > 0
+                ? `${primary.width} / ${primary.height}`
+                : "3 / 4",
+          }}
+        >
+          <img src={primary.thumbnailUrl} alt={primary.alt} />
+          <Button
+            variant="secondary"
+            size="icon"
+            aria-label={`${primary.alt || name} 크게 보기`}
+            onClick={() => onZoom(primary)}
+            className="absolute right-3 top-16 rounded-full"
+          >
+            <Maximize2 />
+          </Button>
+          <PhotoHeart
+            image={primary}
+            selected={isSelected(session, styleId, primary)}
+            busy={busy}
+            onHeart={onHeart}
+          />
+          {primary.isGenerated && <span className="photo-pending">AI 생성 예시</span>}
+        </div>
+      ) : (
+        <span className="photo-pending">사진 준비 중</span>
+      )}
+    </div>
+  );
+}
+
+const isSelected = (session: SessionView, styleId: string, img: StyleImage) =>
+  session.imagePreferences.some((p) => p.styleId === styleId && p.imageId === img.id && p.selected);
+
+/**
+ * Two quick taps on the same photo (or the cover) within 350ms. A press that moved (a scroll or a
+ * slide between cards) is not a tap, so sliding never hearts a photo by accident.
+ */
+function useDoubleTap(disabled: boolean, onDouble: (img?: StyleImage) => void) {
+  const last = useRef<{ imageId: string | null; time: number } | null>(null);
+  const down = useRef<{ x: number; y: number } | null>(null);
+  return (img?: StyleImage) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      down.current = (e.target as HTMLElement).closest("button")
+        ? null
+        : { x: e.clientX, y: e.clientY };
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      const start = down.current;
+      down.current = null;
+      if (!start || Math.abs(e.clientX - start.x) >= 10 || Math.abs(e.clientY - start.y) >= 10)
+        return;
+      const now = Date.now();
+      const previous = last.current;
+      const imageId = img?.id ?? null;
+      last.current = { imageId, time: now };
+      if (!previous || previous.imageId !== imageId || now - previous.time > 350) return;
+      last.current = null;
+      if (!disabled) onDouble(img);
+    },
+    onPointerCancel: () => {
+      down.current = null;
+    },
+  });
+}
+
+function StyleCard({
+  session,
+  styleId,
+  description,
+  images,
+  busy,
+  failed,
+  onRespond,
+  onNavigate,
+  onHeart,
+  onZoom,
+}: {
+  session: SessionView;
+  styleId: string;
+  description: string | null;
+  images: StyleImage[];
+  busy: boolean;
   failed: boolean;
   onRespond: (r: StyleResponse) => void;
-  onDoubleLike: () => void;
   onNavigate: (id: string) => void;
   onHeart: (img: StyleImage, selected: boolean) => void;
   onZoom: (img: StyleImage) => void;
@@ -821,147 +1002,38 @@ function StyleCard({
   const current = session.responses.find((r) => r.styleId === styleId)?.response ?? null;
   const prev = order[idx - 1];
   const next = order[idx + 1];
-  const drag = useRef<{ x: number; y: number } | null>(null);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const delta = useRef({ x: 0, y: 0 });
-  const lastTap = useRef<{ imageId: string | null; time: number } | null>(null);
-  const gridDrag = useRef<{ x: number; y: number } | null>(null);
-  const primary = images[0];
-  const selected = (img: StyleImage) =>
-    session.imagePreferences.some(
-      (p) => p.styleId === styleId && p.imageId === img.id && p.selected,
-    );
-  const handleTap = (img?: StyleImage) => {
-    const now = Date.now();
-    const previous = lastTap.current;
-    const imageId = img?.id ?? null;
-    lastTap.current = { imageId, time: now };
-    if (!previous || previous.imageId !== imageId || now - previous.time > 350) return;
-    lastTap.current = null;
-    if (busy || !order.includes(styleId)) return;
-    if (img) {
-      if (!selected(img)) onHeart(img, true);
-    } else if (current !== "liked") onDoubleLike();
-  };
-  const release = () => {
-    if (!drag.current) return;
-    drag.current = null;
-    const { x, y } = delta.current;
-    const response = swipeResponse(x, y);
-    setOffset({ x: 0, y: 0 });
-    if (response) {
-      if (!busy) onRespond(response);
-    } else if (Math.abs(x) < 10 && Math.abs(y) < 10) {
-      handleTap(primary);
-    }
-  };
+  const tap = useDoubleTap(busy || !order.includes(styleId), (img) => {
+    if (img && !isSelected(session, styleId, img)) onHeart(img, true);
+  });
   return (
-    <article className="mt-4">
-      <div
-        className={cn("swipe-stage", drag.current && "swipe-stage-dragging", failed && "shake")}
-        style={{ transform: `translate(${offset.x}px, ${offset.y}px) rotate(${offset.x / 18}deg)` }}
-        onPointerDown={(e) => {
-          if (busy || (e.target as HTMLElement).closest("button")) return;
-          delta.current = { x: 0, y: 0 };
-          drag.current = { x: e.clientX, y: e.clientY };
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          if (drag.current) {
-            delta.current = { x: e.clientX - drag.current.x, y: e.clientY - drag.current.y };
-            setOffset(delta.current);
-          }
-        }}
-        onPointerUp={release}
-        onPointerCancel={() => {
-          drag.current = null;
-          setOffset({ x: 0, y: 0 });
-        }}
-      >
-        <div
-          className="swipe-cover"
-          aria-describedby="double-tap-hint"
-          data-testid="style-card-photo"
-        >
-          <span id="double-tap-hint" className="sr-only">
-            두 번 탭하면 좋아요
-          </span>
-          {primary ? (
-            <div
-              className="swipe-photo"
-              data-testid="style-card-frame"
-              style={{
-                aspectRatio:
-                  primary.width > 0 && primary.height > 0
-                    ? `${primary.width} / ${primary.height}`
-                    : "3 / 4",
-              }}
-            >
-              <img src={primary.thumbnailUrl} alt={primary.alt} />
-              <Button
-                variant="secondary"
-                size="icon"
-                aria-label={`${primary.alt || name} 크게 보기`}
-                onClick={() => onZoom(primary)}
-                className="absolute right-3 top-16 rounded-full"
-              >
-                <Maximize2 />
-              </Button>
-              <PhotoHeart
-                image={primary}
-                selected={selected(primary)}
-                busy={busy}
-                onHeart={onHeart}
-              />
-              {primary.isGenerated && <span className="photo-pending">AI 생성 예시</span>}
-            </div>
-          ) : (
-            <span className="photo-pending">사진 준비 중</span>
-          )}
-          {(offset.x > 15 || offset.x < -15 || offset.y < -15) && (
-            <span className="swipe-stamp" aria-hidden="true">
-              {offset.x > 15 ? "좋아요" : offset.x < -15 ? "별로" : "건너뛰기"}
-            </span>
-          )}
-        </div>
-        <div className="swipe-footer">
-          <h2>{name}</h2>
-          <span className="text-xs text-muted-foreground">
-            {idx + 1} / {order.length}
-          </span>
-        </div>
+    <article className={cn("mt-4", failed && "shake")}>
+      <div className="swipe-footer">
+        <h2>{name}</h2>
+        <span className="text-xs text-muted-foreground">
+          {idx + 1} / {order.length}
+        </span>
       </div>
+      {description && (
+        <p className="px-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
+      )}
       {images.length > 1 && (
         <ul className="mt-4 grid grid-cols-2 gap-3">
           {images.slice(1).map((img) => (
             <li key={img.id} className="relative">
-              <div
-                data-testid={`style-photo-${img.id}`}
-                className="photo-double-tap"
-                onPointerDown={(e) => {
-                  gridDrag.current = { x: e.clientX, y: e.clientY };
-                }}
-                onPointerUp={(e) => {
-                  const start = gridDrag.current;
-                  gridDrag.current = null;
-                  if (
-                    start &&
-                    Math.abs(e.clientX - start.x) < 10 &&
-                    Math.abs(e.clientY - start.y) < 10
-                  )
-                    handleTap(img);
-                }}
-                onPointerCancel={() => {
-                  gridDrag.current = null;
-                }}
-              >
+              <div data-testid={`style-photo-${img.id}`} className="photo-double-tap" {...tap(img)}>
                 <img
                   src={img.thumbnailUrl}
                   alt={img.alt}
+                  loading="lazy"
                   className="aspect-[3/4] w-full object-cover"
                 />
               </div>
-              <PhotoHeart image={img} selected={selected(img)} busy={busy} onHeart={onHeart} />
+              <PhotoHeart
+                image={img}
+                selected={isSelected(session, styleId, img)}
+                busy={busy}
+                onHeart={onHeart}
+              />
               <Button
                 size="icon"
                 variant="secondary"
@@ -975,27 +1047,6 @@ function StyleCard({
           ))}
         </ul>
       )}
-      <div className="response-controls" role="group" aria-label="스타일 응답">
-        {[RESPONSES[1]].map(
-          (r) =>
-            r && (
-              <Button
-                variant="ghost"
-                key={r.value}
-                aria-label={r.label}
-                aria-pressed={current === r.value}
-                disabled={!order.includes(styleId) || busy}
-                onClick={() => onRespond(r.value)}
-                className={`response-command response-${r.value}`}
-              >
-                <span className="response-circle">
-                  {r.value === "disliked" ? <X /> : <ArrowUp />}
-                </span>
-                <span>{r.label}</span>
-              </Button>
-            ),
-        )}
-      </div>
       <div className="mt-4 flex items-center justify-between text-xs">
         <Button variant="ghost" disabled={!prev || busy} onClick={() => prev && onNavigate(prev)}>
           ← 이전
@@ -1007,6 +1058,16 @@ function StyleCard({
           다음 →
         </Button>
       </div>
+      {/* The only answer button, at the very bottom (user, 2026-10-28); liking is a double tap. */}
+      <Button
+        variant="outline"
+        className="skip-response mt-6 w-full"
+        aria-pressed={current === "skipped"}
+        disabled={!order.includes(styleId) || busy}
+        onClick={() => onRespond("skipped")}
+      >
+        건너뛰기
+      </Button>
     </article>
   );
 }
