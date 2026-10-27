@@ -46,6 +46,7 @@ function renderPager(currentId = "a") {
     <StylePager
       genres={genres}
       currentId={currentId}
+      busy={false}
       onSelect={onSelect}
       preview={() => undefined}
       renderCover={(id) => <div data-testid="cover">{id}</div>}
@@ -108,6 +109,7 @@ describe("ONB-3D-001 스타일 카드 탐색", () => {
       <StylePager
         genres={genres}
         currentId="e"
+        busy={false}
         onSelect={onSelect}
         preview={() => undefined}
         renderCover={(id) => <div data-testid="cover">{id}</div>}
@@ -117,5 +119,31 @@ describe("ONB-3D-001 스타일 카드 탐색", () => {
     fireEvent.scroll(track); // the programmatic scroll's own event, still on the old row
     await wait(200);
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("저장되지 않은 이동(실패·무시)은 가운데 카드를 현재 스타일로 되돌린다", async () => {
+    const { onSelect, rerender, container } = renderPager("a");
+    await wait(900);
+    const track = container.querySelector<HTMLElement>(".style-track")!;
+    const scrollTo = vi.fn();
+    track.scrollTo = scrollTo as unknown as typeof track.scrollTo;
+    track.scrollLeft = 238;
+    fireEvent.scroll(track);
+    await wait(200);
+    expect(onSelect).toHaveBeenLastCalledWith("b");
+    const view = (busy: boolean) => (
+      <StylePager
+        genres={genres}
+        currentId="a"
+        busy={busy}
+        onSelect={onSelect}
+        preview={() => undefined}
+        renderCover={(id) => <div data-testid="cover">{id}</div>}
+      />
+    );
+    rerender(view(true)); // saving: wait
+    expect(scrollTo).not.toHaveBeenCalled();
+    rerender(view(false)); // the app kept "a"
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: 0 }));
   });
 });
