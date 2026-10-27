@@ -682,7 +682,8 @@ export class AuthService {
       .prepare(
         "SELECT id, scheduled_at AS scheduledAt FROM account_deletions WHERE user_id=? AND stage='pending' AND scheduled_at>?",
       )
-      .get(userId, this.at()) as { id: string; scheduledAt: string } | undefined;
+      .get(userId, this.at()) as
+      { id: string; scheduledAt: string } | undefined;
   }
   private pendingRestoreRow(token: string | undefined) {
     const row =
@@ -692,8 +693,7 @@ export class AuthService {
               "SELECT user_id AS userId, return_to AS returnTo, expires_at AS expiresAt FROM pending_restores WHERE token_hash=?",
             )
             .get(sha256(token)) as
-            | { userId: string; returnTo: string; expiresAt: string }
-            | undefined)
+            { userId: string; returnTo: string; expiresAt: string } | undefined)
         : undefined;
     const deletion = row && this.restorableDeletion(row.userId);
     if (!row || row.expiresAt <= this.at() || !deletion)
@@ -726,9 +726,7 @@ export class AuthService {
         .prepare("DELETE FROM account_deletions WHERE id=?")
         .run(row.deletion.id);
       this.db
-        .prepare(
-          "UPDATE users SET status='active', deleted_at=NULL WHERE id=?",
-        )
+        .prepare("UPDATE users SET status='active', deleted_at=NULL WHERE id=?")
         .run(row.userId);
       return {
         userId: row.userId,
@@ -772,6 +770,15 @@ export class AuthService {
       stage: "pending" | "data_deleted";
     }[];
     for (const job of jobs) {
+      // The list is a snapshot and the loop awaits Kakao, so re-read each job right before acting:
+      // a restore made meanwhile (possible if the clock stepped back) must never be undone.
+      const current = this.db
+        .prepare(
+          "SELECT stage FROM account_deletions WHERE id=? AND stage!='done' AND (scheduled_at IS NULL OR scheduled_at<=?)",
+        )
+        .get(job.id, this.at()) as { stage: typeof job.stage } | undefined;
+      if (!current) continue;
+      job.stage = current.stage;
       const failed = (code: string) =>
         this.db
           .prepare(

@@ -170,7 +170,9 @@ export function registerAuthRoutes(
     auth.pendingRestore(request.cookies[cookies.names.restore]),
   );
   app.post(`${prefix}/restore`, (request, reply) => {
-    z.object({}).strict().parse(request.body ?? {});
+    z.object({})
+      .strict()
+      .parse(request.body ?? {});
     const result = auth.restore(request.cookies[cookies.names.restore]);
     cookies.clear(reply, "restore");
     cookies.set(reply, "session", result.token, result.expiresAt);
