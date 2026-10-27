@@ -1,7 +1,7 @@
 import { announceAuthError } from "./auth-routing";
 
 /**
- * 기준 하의 온보딩 API 클라이언트.
+ * 기준 옷 온보딩 API 클라이언트.
  *
  * 계약 (GAR-001/GAR-002 확정):
  * - 같은 출처 /api, credentials: "include"
@@ -12,7 +12,20 @@ import { announceAuthError } from "./auth-routing";
  * - 401 SESSION_REQUIRED 시 자동 세션 재생성/초기화 금지 (호출자가 명시적 선택을 받아야 함)
  */
 
-export type GarmentType = "pants" | "skirt";
+export type GarmentType = "pants" | "skirt" | "top" | "outer";
+
+/**
+ * 사용자가 직접 확인·저장한 옷 속성. values는 서버 형태 그대로
+ * (color만 중첩 객체). 사진·종류가 바뀌면 needsConfirmation이 true가 된다.
+ */
+export interface GarmentAttributes {
+  garmentType: GarmentType;
+  vocabularyVersion: string;
+  values: Record<string, unknown>;
+  rawText: string | null;
+  needsConfirmation: boolean;
+  updatedAt: string;
+}
 
 export interface Garment {
   id: string;
@@ -25,6 +38,7 @@ export interface Garment {
   height: number;
   createdAt: string;
   updatedAt: string;
+  attributes: GarmentAttributes | null;
 }
 
 export interface GarmentMetadata {
@@ -150,7 +164,7 @@ export async function getGarment(): Promise<Garment | null> {
 }
 
 /**
- * 기준 하의 저장. 최초 등록은 image 필수, 정보만 수정이면 image 생략,
+ * 기준 옷 저장. 최초 등록은 image 필수, 정보만 수정이면 image 생략,
  * 사진 교체 시 image 포함. Content-Type은 브라우저가 boundary와 함께 설정한다.
  */
 export async function putGarment(metadata: GarmentMetadata, image?: File): Promise<Garment> {
@@ -167,7 +181,24 @@ export async function putGarment(metadata: GarmentMetadata, image?: File): Promi
   return data.garment;
 }
 
-/** 기준 하의 삭제. 204 성공 전까지 호출자는 기존 상태를 지우지 않는다. */
+/**
+ * 옷 속성 저장. 사진이 먼저 저장되어 있어야 한다(없으면 404 GARMENT_NOT_FOUND).
+ * 409 GARMENT_TYPE_CHANGED는 종류가 바뀐 것이니 호출자가 garment를 다시 불러야 한다.
+ */
+export async function putGarmentAttributes(input: {
+  garmentType: GarmentType;
+  values: Record<string, unknown>;
+  rawText: string | null;
+}): Promise<Garment> {
+  const data = await request<{ garment: Garment }>(`${GARMENT_PATH}/attributes`, {
+    method: "PUT",
+    headers: { ...MUTATION_HEADERS, "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return data.garment;
+}
+
+/** 기준 옷 삭제. 204 성공 전까지 호출자는 기존 상태를 지우지 않는다. */
 export async function deleteGarment(): Promise<void> {
   await request<unknown>(GARMENT_PATH, {
     method: "DELETE",

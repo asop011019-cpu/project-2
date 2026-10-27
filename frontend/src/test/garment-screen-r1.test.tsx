@@ -63,6 +63,7 @@ const savedGarment: Garment = {
   height: 1200,
   createdAt: "2026-10-25T00:00:00Z",
   updatedAt: "2026-10-25T01:00:00Z",
+  attributes: null,
 };
 
 function makeImageFile(name = "pants.jpg") {
@@ -125,7 +126,7 @@ describe("GarmentScreen R1", () => {
     const first = renderScreen(queryClient);
 
     await waitFor(() => {
-      expect(screen.getByAltText("등록한 기준 하의 사진")).toBeInTheDocument();
+      expect(screen.getByAltText("등록한 기준 옷 사진")).toBeInTheDocument();
     });
 
     await userEvent.click(screen.getByRole("button", { name: "삭제" }));
@@ -144,7 +145,7 @@ describe("GarmentScreen R1", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "사진 선택" })).toBeInTheDocument();
     });
-    expect(screen.queryByAltText("등록한 기준 하의 사진")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("등록한 기준 옷 사진")).not.toBeInTheDocument();
   });
 
   it("저장 실패 후 사진을 제거하면 재시도 버튼이 비활성화되고 PUT을 다시 보내지 않는다", async () => {
@@ -163,7 +164,7 @@ describe("GarmentScreen R1", () => {
 
     await selectFile(makeImageFile());
     await waitFor(() => {
-      expect(screen.getByAltText("등록한 기준 하의 사진")).toBeInTheDocument();
+      expect(screen.getByAltText("등록한 기준 옷 사진")).toBeInTheDocument();
     });
     await userEvent.click(screen.getByRole("button", { name: "바지" }));
 
@@ -212,7 +213,7 @@ describe("GarmentScreen R1", () => {
 
     renderScreen();
 
-    const img = await screen.findByAltText("등록한 기준 하의 사진");
+    const img = await screen.findByAltText("등록한 기준 옷 사진");
     fireEvent.error(img);
 
     await waitFor(() => {
@@ -227,7 +228,7 @@ describe("GarmentScreen R1", () => {
     // 재시도하면 캐시 우회 쿼리를 붙여 다시 요청한다
     await userEvent.click(screen.getByRole("button", { name: "사진 다시 불러오기" }));
     await waitFor(() => {
-      expect(screen.getByAltText("등록한 기준 하의 사진")).toHaveAttribute(
+      expect(screen.getByAltText("등록한 기준 옷 사진")).toHaveAttribute(
         "src",
         "/api/onboarding/session/garment/image?v=2026-10-25T01%3A00%3A00Z&r=1",
       );
@@ -240,7 +241,7 @@ describe("GarmentScreen R1", () => {
 
     renderScreen();
 
-    const img = await screen.findByAltText("등록한 기준 하의 사진");
+    const img = await screen.findByAltText("등록한 기준 옷 사진");
     fireEvent.error(img);
 
     await waitFor(() => {

@@ -47,6 +47,7 @@ const savedGarment: Garment = {
   height: 1200,
   createdAt: "2026-10-25T00:00:00Z",
   updatedAt: "2026-10-25T01:00:00Z",
+  attributes: null,
 };
 
 afterEach(() => {
@@ -65,7 +66,7 @@ describe("GarmentScreen", () => {
     });
     expect(screen.getByLabelText(/제품명/)).toHaveValue("와이드 슬랙스");
     expect(screen.getByRole("button", { name: "바지" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByAltText("등록한 기준 하의 사진")).toHaveAttribute(
+    expect(screen.getByAltText("등록한 기준 옷 사진")).toHaveAttribute(
       "src",
       "/api/onboarding/session/garment/image?v=2026-10-25T01%3A00%3A00Z",
     );
@@ -119,12 +120,12 @@ describe("GarmentScreen", () => {
     renderScreen();
 
     await waitFor(() => {
-      expect(screen.getByAltText("등록한 기준 하의 사진")).toBeInTheDocument();
+      expect(screen.getByAltText("등록한 기준 옷 사진")).toBeInTheDocument();
     });
 
     await userEvent.click(screen.getByRole("button", { name: "삭제" }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(dialog).toHaveTextContent("등록한 하의를 삭제할까요?");
+    expect(dialog).toHaveTextContent("등록한 옷을 삭제할까요?");
     expect(apiMocks.deleteGarment).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole("button", { name: "삭제" }));

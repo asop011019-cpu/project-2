@@ -22,8 +22,10 @@ interface GarmentFormProps {
 }
 
 const TYPE_OPTIONS: { value: GarmentType; label: string }[] = [
+  { value: "top", label: "상의" },
   { value: "pants", label: "바지" },
   { value: "skirt", label: "치마" },
+  { value: "outer", label: "아우터" },
 ];
 
 function StepLabel({ step, title, optional }: { step: string; title: string; optional?: boolean }) {

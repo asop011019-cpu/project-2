@@ -90,7 +90,7 @@ export function GarmentPhoto({
 
   if (restoring) {
     return (
-      <div aria-busy="true" aria-label="저장된 하의를 불러오는 중">
+      <div aria-busy="true" aria-label="저장된 옷을 불러오는 중">
         <Skeleton className="aspect-[3/4] w-full rounded-3xl" />
       </div>
     );
@@ -147,7 +147,7 @@ export function GarmentPhoto({
           ) : (
             <img
               src={imageUrl}
-              alt="등록한 기준 하의 사진"
+              alt="등록한 기준 옷 사진"
               className="h-full w-full object-contain"
               onError={onImageError}
             />
@@ -201,7 +201,7 @@ export function GarmentPhoto({
           <div className="relative flex flex-col items-center gap-4 px-6 py-9 text-center">
             <GarmentLineArt />
             <p className="text-sm leading-relaxed text-muted-foreground">
-              코디의 기준이 될 하의 사진 한 장을 올려 주세요.
+              코디의 기준이 될 옷 사진 한 장을 올려 주세요.
               <br />
               JPEG, PNG, WebP · 10MB 이하
             </p>

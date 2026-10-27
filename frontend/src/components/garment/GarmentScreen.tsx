@@ -22,6 +22,7 @@ import {
   garmentImageSrc,
   getGarment,
   putGarment,
+  putGarmentAttributes,
   resetSession,
   type Garment,
   type GarmentMetadata,
@@ -29,8 +30,17 @@ import {
 } from "@/lib/onboarding-api";
 import { checkImageFile, photoErrorMessage } from "@/lib/image-check";
 import { buildMetadata, normalizeOptional, type FieldErrors } from "@/lib/garment-form";
+import {
+  buildAttributesBody,
+  flattenValues,
+  pruneForType,
+  type AttributeValues,
+  type AttributesBody,
+  type AxisDef,
+} from "@/lib/garment-attributes";
 import { GarmentPhoto } from "./GarmentPhoto";
 import { GarmentForm } from "./GarmentForm";
+import { GarmentAttributes } from "./GarmentAttributes";
 
 const RESTORE_QUERY_KEY = ["onboarding", "garment"] as const;
 
@@ -94,6 +104,8 @@ export function GarmentScreen({
           brand: string;
           productName: string;
           purchaseUrl: string;
+          attrValues: AttributeValues;
+          rawText: string;
         }>("garment")
       : undefined,
   ).current;
@@ -109,6 +121,11 @@ export function GarmentScreen({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [actionError, setActionError] = useState<ActionError | null>(null);
+  /** 옷 정보 확인 영역의 선택값·직접 적기 (실패해도 지우지 않는다) */
+  const [attrValues, setAttrValues] = useState<AttributeValues>({});
+  const [rawText, setRawText] = useState("");
+  const [attrError, setAttrError] = useState<string | null>(null);
+  const [attrNotice, setAttrNotice] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -148,11 +165,21 @@ export function GarmentScreen({
     setBrand(draft.brand);
     setProductName(draft.productName);
     setPurchaseUrl(draft.purchaseUrl);
+    setAttrValues(draft.attrValues ?? {});
+    setRawText(draft.rawText ?? "");
   }, [draft]);
   useEffect(() => {
     if (preserveDraft && touchedRef.current)
-      writeAuthDraft("garment", { localFile, garmentType, brand, productName, purchaseUrl });
-  }, [localFile, garmentType, brand, productName, purchaseUrl, preserveDraft]);
+      writeAuthDraft("garment", {
+        localFile,
+        garmentType,
+        brand,
+        productName,
+        purchaseUrl,
+        attrValues,
+        rawText,
+      });
+  }, [localFile, garmentType, brand, productName, purchaseUrl, attrValues, rawText, preserveDraft]);
 
   const restoreQuery = useQuery({
     queryKey: RESTORE_QUERY_KEY,
@@ -177,6 +204,8 @@ export function GarmentScreen({
       setBrand(g.brand ?? "");
       setProductName(g.productName ?? "");
       setPurchaseUrl(g.purchaseUrl ?? "");
+      setAttrValues(g.attributes ? flattenValues(g.attributes.values) : {});
+      setRawText(g.attributes?.rawText ?? "");
     }
   }, [restoreQuery.data]);
 
@@ -202,6 +231,10 @@ export function GarmentScreen({
     setPhotoError(null);
     setFieldErrors({});
     setActionError(null);
+    setAttrValues({});
+    setRawText("");
+    setAttrError(null);
+    setAttrNotice(null);
     setImageFailed(false);
     setImageRetrySeq(0);
   };
@@ -263,6 +296,11 @@ export function GarmentScreen({
       setBrand(g.brand ?? "");
       setProductName(g.productName ?? "");
       setPurchaseUrl(g.purchaseUrl ?? "");
+      // 종류·사진 변경으로 서버가 남긴 속성(공통 축만)과 확인 필요 표시를 그대로 반영한다
+      setAttrValues(g.attributes ? flattenValues(g.attributes.values) : {});
+      setRawText(g.attributes?.rawText ?? "");
+      setAttrError(null);
+      setAttrNotice(null);
       setPhotoError(null);
       setFieldErrors({});
       setActionError(null);
@@ -270,6 +308,53 @@ export function GarmentScreen({
       toast.success("사진과 정보가 저장되었어요");
     },
     onError: (e) => handleApiFailure("save", e),
+  });
+
+  const attributesMutation = useMutation({
+    mutationFn: async (body: AttributesBody) => {
+      await queryClient.cancelQueries({ queryKey: RESTORE_QUERY_KEY });
+      return putGarmentAttributes(body);
+    },
+    onSuccess: (g) => {
+      queryClient.setQueryData(RESTORE_QUERY_KEY, g);
+      setSaved(g);
+      setAttrValues(g.attributes ? flattenValues(g.attributes.values) : {});
+      setRawText(g.attributes?.rawText ?? "");
+      setAttrError(null);
+      setAttrNotice(null);
+      toast.success("저장했어요");
+    },
+    onError: async (e) => {
+      // 입력한 선택값과 글은 어떤 실패에도 지우지 않는다
+      if (
+        e instanceof ApiError &&
+        (e.code === "AUTH_REQUIRED" || e.code === "CONSENT_UPDATE_REQUIRED")
+      )
+        return;
+      if (e instanceof ApiError && e.status === 401) {
+        setSessionExpired(true);
+        return;
+      }
+      if (e instanceof ApiError && e.status === 409 && e.code === "GARMENT_TYPE_CHANGED") {
+        // 종류가 바뀐 상태라 저장된 정보를 다시 불러오고 안내만 한다 (입력은 유지)
+        const fresh = await restoreQuery.refetch();
+        if (fresh.data !== undefined) setSaved(fresh.data);
+        setAttrNotice(
+          "옷 종류가 바뀌었어요. 저장된 정보를 다시 불러왔으니 확인 후 다시 저장해 주세요.",
+        );
+        return;
+      }
+      if (e instanceof ApiError && e.status === 400) {
+        const issue = e.issues?.find((i) => typeof i.message === "string" && i.message);
+        setAttrError(issue?.message ?? e.message ?? "입력한 정보를 확인해 주세요.");
+        return;
+      }
+      setAttrError(
+        messageForApiError(
+          e instanceof ApiError ? e : new ApiError({ status: 0, code: "UNKNOWN", message: "" }),
+        ),
+      );
+    },
   });
 
   const deleteMutation = useMutation({
@@ -282,7 +367,7 @@ export function GarmentScreen({
       queryClient.setQueryData(RESTORE_QUERY_KEY, null);
       setDeleteOpen(false);
       clearAll();
-      toast.success("등록한 하의를 삭제했어요");
+      toast.success("등록한 옷을 삭제했어요");
     },
     onError: (e) => {
       setDeleteOpen(false);
@@ -342,6 +427,51 @@ export function GarmentScreen({
     saveMutation.mutate({ metadata: built.metadata, image: localFile });
   };
 
+  const handleAttrToggle = (axis: AxisDef, value: string) => {
+    touch();
+    setAttrError(null);
+    setAttrNotice(null);
+    setAttrValues((prev) => {
+      const next = { ...prev };
+      if (axis.multi) {
+        const current = Array.isArray(prev[axis.key]) ? (prev[axis.key] as string[]) : [];
+        const toggled = current.includes(value)
+          ? current.filter((v) => v !== value)
+          : [...current, value];
+        if (toggled.length === 0) delete next[axis.key];
+        else next[axis.key] = toggled;
+      } else {
+        // 한 개 축은 다시 누르면 선택 해제
+        if (prev[axis.key] === value) delete next[axis.key];
+        else next[axis.key] = value;
+      }
+      return next;
+    });
+  };
+
+  const savedAttrBody = saved
+    ? JSON.stringify(
+        buildAttributesBody(
+          saved.garmentType,
+          saved.attributes ? flattenValues(saved.attributes.values) : {},
+          saved.attributes?.rawText ?? "",
+        ),
+      )
+    : null;
+  const currentAttrBody = garmentType
+    ? JSON.stringify(buildAttributesBody(garmentType, attrValues, rawText))
+    : null;
+  const attrDirty = savedAttrBody !== currentAttrBody;
+  const canSaveAttributes =
+    saved !== null && garmentType !== null && attrDirty && !formDisabled && !reading;
+
+  const handleAttributesSave = () => {
+    if (!canSaveAttributes || garmentType === null) return;
+    setAttrError(null);
+    setAttrNotice(null);
+    attributesMutation.mutate(buildAttributesBody(garmentType, attrValues, rawText));
+  };
+
   const handleDelete = () => {
     if (actionPending || sessionExpired || restoring) return;
     deleteMutation.mutate();
@@ -381,15 +511,14 @@ export function GarmentScreen({
           </div>
           <p className="flex items-center gap-2 text-xs font-bold tracking-[0.22em] text-primary">
             <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-            NEXT · 기준 하의
+            NEXT · 기준 옷
           </p>
           <h1 className="mt-4 font-display text-4xl font-extrabold leading-[1.08] tracking-tight text-foreground lg:text-6xl">
             코디의 기준이 될
-            <br />
-            하의 한 벌
+            <br />옷 한 벌
           </h1>
           <p className="mt-4 max-w-[40ch] text-sm leading-relaxed text-muted-foreground lg:text-base">
-            이 하의를 기준으로 어울리는 코디를 준비해 드릴게요. 사진 한 장과 종류만 있으면 됩니다.
+            이 옷을 기준으로 어울리는 코디를 준비해 드릴게요. 사진 한 장과 종류만 있으면 됩니다.
           </p>
         </header>
 
@@ -443,7 +572,7 @@ export function GarmentScreen({
         )}
 
         <div className="mt-8 flex flex-col gap-8 lg:mt-12 lg:grid lg:grid-cols-12 lg:gap-12">
-          <section className="animate-rise lg:order-2 lg:col-span-7" aria-label="기준 하의 사진">
+          <section className="animate-rise lg:order-2 lg:col-span-7" aria-label="기준 옷 사진">
             <div className="lg:sticky lg:top-10">
               <GarmentPhoto
                 restoring={restoring}
@@ -466,7 +595,7 @@ export function GarmentScreen({
             </div>
           </section>
 
-          <section className="animate-rise-late lg:order-1 lg:col-span-5" aria-label="하의 정보">
+          <section className="animate-rise-late lg:order-1 lg:col-span-5" aria-label="옷 정보">
             <GarmentForm
               garmentType={garmentType}
               brand={brand}
@@ -477,6 +606,8 @@ export function GarmentScreen({
               onGarmentType={(v) => {
                 touch();
                 setGarmentType(v);
+                // 이전 종류 전용 선택은 지우고 공통(색·소재감)만 남긴다
+                setAttrValues((prev) => pruneForType(prev));
               }}
               onBrand={(v) => {
                 touch();
@@ -491,6 +622,29 @@ export function GarmentScreen({
                 setPurchaseUrl(v);
               }}
             />
+
+            {saved !== null && garmentType !== null && (
+              <div className="mt-8">
+                <GarmentAttributes
+                  garmentType={garmentType}
+                  values={attrValues}
+                  rawText={rawText}
+                  needsConfirmation={saved.attributes?.needsConfirmation === true}
+                  notice={attrNotice}
+                  error={attrError}
+                  disabled={formDisabled}
+                  saving={attributesMutation.isPending}
+                  canSave={canSaveAttributes && !attributesMutation.isPending}
+                  onToggle={handleAttrToggle}
+                  onRawText={(v) => {
+                    touch();
+                    setAttrError(null);
+                    setRawText(v);
+                  }}
+                  onSave={handleAttributesSave}
+                />
+              </div>
+            )}
 
             {actionError && (
               <div role="alert" className="mt-6 rounded-2xl bg-card p-4 ring-1 ring-destructive/40">
@@ -529,6 +683,9 @@ export function GarmentScreen({
               </div>
             )}
 
+            {/* The section's entrance animation keeps a transform, which pins this "fixed" bar to
+                the section's bottom on mobile; leave room so it never covers the last controls. */}
+            <div aria-hidden="true" className="h-24 lg:hidden" />
             <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/90 px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:static lg:mt-9 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
               <Button
                 type="button"
@@ -547,7 +704,7 @@ export function GarmentScreen({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>등록한 하의를 삭제할까요?</AlertDialogTitle>
+            <AlertDialogTitle>등록한 옷을 삭제할까요?</AlertDialogTitle>
             <AlertDialogDescription>
               저장된 사진과 정보가 삭제됩니다. 이 작업은 되돌릴 수 없어요.
             </AlertDialogDescription>
@@ -572,7 +729,7 @@ export function GarmentScreen({
           <AlertDialogHeader>
             <AlertDialogTitle>처음부터 다시 시작할까요?</AlertDialogTitle>
             <AlertDialogDescription>
-              지금까지 입력한 내용과 저장된 하의가 모두 지워지고 새 세션으로 시작해요.
+              지금까지 입력한 내용과 저장된 옷이 모두 지워지고 새 세션으로 시작해요.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

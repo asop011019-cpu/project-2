@@ -1,5 +1,5 @@
 /**
- * 기준 하의 입력 검증 규칙 (GAR-002 확정값).
+ * 기준 옷 입력 검증 규칙 (GAR-002 확정값).
  * brand 100자 / productName 200자 / purchaseUrl 2048자,
  * URL은 http/https만, 사용자명·비밀번호 포함 금지, trim 후 빈 값은 null.
  */
