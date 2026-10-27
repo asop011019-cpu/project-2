@@ -7,6 +7,7 @@ import { INTRO_IMAGES, robotsText, sitemapXml } from "@/lib/site";
 import { swipeResponse } from "@/lib/swipe";
 import { routeTree } from "@/routeTree.gen";
 import { OnboardingScreen } from "@/components/onboarding/OnboardingScreen";
+import { NotFoundComponent } from "@/routes/__root";
 vi.mock("@tanstack/react-router", async (orig) => ({
   ...(await orig<typeof import("@tanstack/react-router")>()),
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
@@ -84,6 +85,13 @@ describe("DES-002", () => {
   });
   it("preview crawler setting blocks indexing", () =>
     expect(robotsText("", true)).toContain("Disallow: /"));
+  it("404에서 처음 화면으로는 인트로 없이 남성복·여성복 선택으로 간다", () => {
+    render(<NotFoundComponent />);
+    expect(screen.getByRole("link", { name: "처음 화면으로" })).toHaveAttribute(
+      "href",
+      "/?explore=1",
+    );
+  });
   it("unknown route invokes root not-found handling and privacy is a leaf", () => {
     const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
     expect(router.matchRoutes("/not-a-page").at(-1)?.routeId).toBe("/$");
