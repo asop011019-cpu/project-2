@@ -38,32 +38,11 @@ describe("DES-002", () => {
     expect(INTRO_IMAGES.map((i) => i.src)).toContain(photo.getAttribute("src"));
     expect(INTRO_IMAGES.map((i) => i.alt)).toContain(photo.getAttribute("alt"));
   });
-  it("intro CTA moves to category with a curtain", async () => {
+  it("intro CTA moves to category at once, with no curtain wipe", async () => {
     mount();
     await userEvent.click(screen.getByRole("button", { name: "내 취향 찾기" }));
-    expect(screen.getByTestId("curtain")).toBeInTheDocument();
-    expect(
-      await screen.findByRole("button", { name: "남성복 선택, 24개 스타일" }),
-    ).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByTestId("curtain")).not.toBeInTheDocument());
-  });
-  it("reduced motion moves immediately without a curtain", async () => {
-    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }));
-    mount();
-    await userEvent.click(screen.getByRole("button", { name: "내 취향 찾기" }));
+    expect(screen.getByRole("button", { name: "남성복 선택, 24개 스타일" })).toBeInTheDocument();
     expect(screen.queryByTestId("curtain")).not.toBeInTheDocument();
-    expect(
-      await screen.findByRole("button", { name: "여성복 선택, 30개 스타일" }),
-    ).toBeInTheDocument();
   });
   it("right beyond 90px means liked", () => expect(swipeResponse(91, 0)).toBe("liked"));
   it("left beyond 90px means disliked", () => expect(swipeResponse(-91, 0)).toBe("disliked"));
@@ -103,7 +82,6 @@ describe("DES-002", () => {
     expect(screen.queryByRole("button", { name: "뒤로 가기" })).not.toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "내 취향 찾기" }));
     await screen.findByRole("heading", { name: "어떤 옷을 추천받을까요?" });
-    await waitFor(() => expect(screen.queryByTestId("curtain")).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "뒤로 가기" })).not.toBeInTheDocument();
   });
 });

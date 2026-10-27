@@ -656,21 +656,6 @@
 .shake {
   animation: shake 0.42s;
 }
-.curtain-panel {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  place-items: center;
-  background: var(--primary);
-  animation: curtain 0.98s cubic-bezier(0.76, 0, 0.24, 1) both;
-}
-.curtain-panel span {
-  width: 44px;
-  height: 4px;
-  background: var(--primary-foreground);
-  animation: curtain-bar 0.98s both;
-}
 .summary-title {
   font-size: 36px;
   font-family: var(--font-display);
@@ -784,31 +769,6 @@
     transform: none;
   }
 }
-@keyframes curtain {
-  0% {
-    transform: translateY(100%);
-  }
-  45%,
-  55% {
-    transform: translateY(0);
-  }
-  100% {
-    transform: translateY(-100%);
-  }
-}
-@keyframes curtain-bar {
-  0%,
-  30% {
-    transform: scaleX(0);
-  }
-  50% {
-    transform: scaleX(1);
-  }
-  70%,
-  100% {
-    transform: scaleX(0);
-  }
-}
 @keyframes hang {
   0% {
     transform: translateY(-36px) rotate(-14deg);
@@ -918,9 +878,6 @@ a:focus-visible {
   *::after {
     animation: none !important;
     transition: none !important;
-  }
-  .curtain-panel {
-    display: none !important;
   }
 }
 
@@ -1378,5 +1335,80 @@ a:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .showcase-card {
     transform: none;
+  }
+}
+
+/* Summary → photo registration: the page turns like a book when dragged right to left. */
+.page-turn {
+  position: relative;
+}
+.page-turn-under {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px;
+  border-radius: 20px;
+  background: var(--card);
+}
+.page-turn-page {
+  position: relative;
+  background: var(--background);
+  transform-origin: left center;
+  backface-visibility: hidden;
+  touch-action: pan-y;
+  transition: transform 0.38s var(--ease-spring);
+  will-change: transform;
+}
+.page-turn-page[data-dragging] {
+  transition: none;
+}
+.page-turn-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 30%, rgba(0, 0, 0, 0.6));
+}
+.page-turn-hint {
+  margin-top: 28px;
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 999px;
+  border: 1px dashed color-mix(in oklab, var(--primary) 55%, transparent);
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.page-turn-hint strong {
+  color: var(--foreground);
+  font-weight: 700;
+}
+.page-turn-hint svg {
+  width: 18px;
+  height: 18px;
+  color: var(--primary);
+  animation: page-turn-nudge 1.6s var(--ease-settle) 0.6s 2 both;
+}
+.page-turn-hint:disabled {
+  opacity: 0.45;
+}
+.page-turn-hint:disabled svg {
+  animation: none;
+}
+.page-turn-hint:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+@keyframes page-turn-nudge {
+  0%,
+  100% {
+    transform: none;
+  }
+  40% {
+    transform: translateX(-6px);
   }
 }
