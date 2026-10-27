@@ -434,7 +434,8 @@ export function OnboardingScreen({
           <header className="onboarding-header items-center">
             <AccountLink />
             <span className="onboarding-header-start">
-              {(step !== "category" || showIntro) && !sessionQuery.isPending && (
+              {/* The category step comes straight after the intro, so it has no back button (user, 2026-10-28). */}
+              {step !== "category" && !sessionQuery.isPending && (
                 <button
                   type="button"
                   className="back-button"
@@ -443,8 +444,7 @@ export function OnboardingScreen({
                   onClick={() => {
                     setError(null);
                     if (step === "summary") setStep("explore");
-                    else if (step === "explore") setStep("category");
-                    else transition(() => setIntro(true));
+                    else setStep("category");
                   }}
                 >
                   <ArrowLeft size={22} aria-hidden="true" />

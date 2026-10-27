@@ -7,6 +7,7 @@ import { INTRO_IMAGES, robotsText, sitemapXml } from "@/lib/site";
 import { swipeResponse } from "@/lib/swipe";
 import { routeTree } from "@/routeTree.gen";
 import { OnboardingScreen } from "@/components/onboarding/OnboardingScreen";
+import { NotFoundComponent } from "@/routes/__root";
 vi.mock("@tanstack/react-router", async (orig) => ({
   ...(await orig<typeof import("@tanstack/react-router")>()),
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
@@ -84,19 +85,25 @@ describe("DES-002", () => {
   });
   it("preview crawler setting blocks indexing", () =>
     expect(robotsText("", true)).toContain("Disallow: /"));
+  it("404에서 처음 화면으로는 인트로 없이 남성복·여성복 선택으로 간다", () => {
+    render(<NotFoundComponent />);
+    expect(screen.getByRole("link", { name: "처음 화면으로" })).toHaveAttribute(
+      "href",
+      "/?explore=1",
+    );
+  });
   it("unknown route invokes root not-found handling and privacy is a leaf", () => {
     const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
     expect(router.matchRoutes("/not-a-page").at(-1)?.routeId).toBe("/$");
     expect(router.routesById["__root__"]?.options.notFoundComponent).toBeTypeOf("function");
     expect(router.matchRoutes("/privacy").at(-1)?.routeId).toBe("/privacy");
   });
-  it("ONB-003 뒤로 가기: 범주 → 인트로, 인트로엔 버튼 없음", async () => {
+  it("인트로와 범주 선택 화면에는 뒤로 가기가 없다 (범주 앞은 인트로뿐)", async () => {
     mount();
     expect(screen.queryByRole("button", { name: "뒤로 가기" })).not.toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "내 취향 찾기" }));
     await screen.findByRole("heading", { name: "어떤 옷을 추천받을까요?" });
     await waitFor(() => expect(screen.queryByTestId("curtain")).not.toBeInTheDocument());
-    await userEvent.click(await screen.findByRole("button", { name: "뒤로 가기" }));
-    expect(await screen.findByRole("button", { name: "내 취향 찾기" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "뒤로 가기" })).not.toBeInTheDocument();
   });
 });

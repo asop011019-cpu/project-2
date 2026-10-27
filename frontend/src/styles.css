@@ -1108,3 +1108,275 @@ a:focus-visible {
     transform: none;
   }
 }
+
+/* MOT-001: motion that explains a real state change. Springs settle with at most a slight
+   overshoot; reduced motion keeps every control and drops the movement. */
+:root {
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* One button shape that changes state in place (after the MORSE reference). */
+.status-button {
+  position: relative;
+  overflow: hidden;
+  transition:
+    background-color 0.3s var(--ease-spring),
+    color 0.3s var(--ease-spring),
+    box-shadow 0.3s var(--ease-spring),
+    transform 0.15s ease;
+}
+.status-button[data-status="success"] {
+  background-color: color-mix(in oklab, var(--primary) 82%, var(--foreground));
+}
+.status-button[data-status="error"] {
+  background-color: color-mix(in oklab, var(--destructive) 55%, var(--secondary));
+  color: var(--foreground);
+}
+.status-button:disabled[data-status="pending"],
+.status-button:disabled[data-status="success"] {
+  opacity: 1;
+}
+.status-button-stack {
+  display: grid;
+}
+.status-button-label {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(6px) scale(0.98);
+  transition:
+    opacity 0.22s ease,
+    filter 0.22s ease,
+    transform 0.32s var(--ease-spring);
+  pointer-events: none;
+}
+.status-button-label[data-active] {
+  opacity: 1;
+  filter: blur(0);
+  transform: none;
+}
+.status-button-label svg {
+  width: 16px;
+  height: 16px;
+}
+.status-button-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: status-progress 1s ease-in-out infinite;
+  opacity: 0.7;
+}
+@keyframes status-progress {
+  from {
+    background-position: -50% 0;
+  }
+  to {
+    background-position: 150% 0;
+  }
+}
+
+/* Style answers and category choice: the chosen control fills in once the server confirmed it. */
+.response-circle {
+  transition:
+    background-color 0.28s var(--ease-spring),
+    border-color 0.28s var(--ease-spring),
+    color 0.28s var(--ease-spring),
+    transform 0.42s var(--ease-spring);
+}
+.response-command:active:not(:disabled) .response-circle {
+  transform: scale(0.92);
+}
+.response-command[aria-pressed="true"] .response-circle {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  transform: scale(1.06);
+}
+.category-card {
+  transition:
+    box-shadow 0.32s var(--ease-spring),
+    border-color 0.32s var(--ease-spring),
+    transform 0.15s ease;
+}
+.category-card[aria-pressed="true"] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.category-card img {
+  transition: transform 0.6s var(--ease-settle);
+}
+.category-card[aria-pressed="true"] img {
+  transform: scale(1.03);
+}
+
+/* Bottom sheet: rises on a spring and leaves the way it came. */
+.motion-sheet[data-state="open"] {
+  animation: sheet-in 0.42s var(--ease-spring) both;
+}
+.motion-sheet[data-state="closed"] {
+  animation: sheet-out 0.24s ease-in both;
+}
+.motion-sheet-overlay[data-state="open"] {
+  animation: overlay-in 0.3s ease both;
+}
+.motion-sheet-overlay[data-state="closed"] {
+  animation: overlay-in 0.2s ease reverse both;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (min-width: 1024px) {
+  @keyframes sheet-in {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes sheet-out {
+    to {
+      transform: translateX(100%);
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-button-label {
+    filter: none;
+    transform: none;
+  }
+  .status-button-progress {
+    animation: none;
+    background: currentColor;
+    opacity: 0.35;
+  }
+}
+
+/* Intro (after the BUILD THE FLOOR reference): each title line rises out of its own mask and
+   lands without bounce, then the subtitle opens from the right edge it is aligned to. Only the
+   entrance changed; words, colours, photo and layout stay as fixed. The start button is visible
+   and usable from the first frame. */
+.intro-title:has(.intro-line) {
+  /* Flex keeps the lines' margins from collapsing, so the mask padding cancels out exactly. */
+  display: flex;
+  flex-direction: column;
+}
+.intro-title .intro-line {
+  overflow: hidden;
+  padding-block: 0.06em;
+  margin-block: -0.06em;
+  animation: none;
+}
+.intro-title .intro-line > span {
+  display: block;
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+  animation: intro-mask-up 0.9s var(--ease-settle) both;
+}
+.intro-title .intro-line + .intro-line {
+  /* The mask's padding is cancelled by the margin, so the fixed 2px gap stays. */
+  margin-top: calc(2px - 0.06em);
+  animation: none;
+}
+.intro-title .intro-line + .intro-line > span {
+  animation-delay: 0.14s;
+}
+.intro-subtitle {
+  animation: intro-open-left 0.7s 0.5s var(--ease-settle) both;
+}
+.intro-actions p {
+  animation: rise 0.5s 0.35s var(--ease-settle) both;
+}
+.intro-start {
+  animation: none;
+}
+@keyframes intro-mask-up {
+  from {
+    transform: translateY(105%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes intro-open-left {
+  from {
+    clip-path: inset(0 0 0 100%);
+    transform: translateX(12px);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    transform: none;
+  }
+}
+
+/* Outfit showcase (after the twoclipping reference): native horizontal swipe with snap, so a
+   vertical drag still scrolls the page; the current card comes forward, the others step back. */
+.showcase-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding: 4px 9% 8px;
+  margin-inline: -20px;
+  scrollbar-width: none;
+  outline: none;
+}
+.showcase-track::-webkit-scrollbar {
+  display: none;
+}
+.showcase-track:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
+  border-radius: 24px;
+}
+.showcase-card {
+  flex: 0 0 82%;
+  max-width: 420px;
+  scroll-snap-align: center;
+  opacity: 0.5;
+  transform: scale(0.94);
+  transition:
+    transform 0.45s var(--ease-spring),
+    opacity 0.3s ease;
+}
+.showcase-card[data-active] {
+  opacity: 1;
+  transform: none;
+}
+.showcase-card[data-active] .showcase-title {
+  animation: intro-mask-up 0.6s var(--ease-settle) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .showcase-card {
+    transform: none;
+  }
+}

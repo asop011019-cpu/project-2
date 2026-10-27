@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { StatusButton, useSaveStatus } from "@/components/motion/StatusButton";
 import {
   ApiError,
   deleteGarment,
@@ -42,7 +43,7 @@ import { GarmentPhoto } from "./GarmentPhoto";
 import { GarmentForm } from "./GarmentForm";
 import { GarmentAttributes } from "./GarmentAttributes";
 import { GarmentSheet } from "./GarmentSheet";
-import { ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 
 const RESTORE_QUERY_KEY = ["onboarding", "garment"] as const;
 
@@ -478,6 +479,8 @@ export function GarmentScreen({
     ? JSON.stringify(buildAttributesBody(garmentType, attrValues, rawText))
     : null;
   const attrDirty = savedAttrBody !== currentAttrBody;
+  const saveStatus = useSaveStatus(saveMutation.status, saveMutation.submittedAt);
+  const attributesStatus = useSaveStatus(attributesMutation.status, attributesMutation.submittedAt);
   const confirmPending =
     saved?.attributes?.needsConfirmation === true && garmentType === saved.garmentType;
   const canSaveAttributes =
@@ -547,7 +550,17 @@ export function GarmentScreen({
       />
       <div className="relative mx-auto w-full max-w-[1200px] px-5 pb-36 pt-9 lg:px-10 lg:pb-16 lg:pt-14">
         <header className="animate-rise">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("auth-navigation", { detail: "/?explore=1" }))
+              }
+              className="tap-feedback flex min-h-11 items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft size={18} aria-hidden="true" />
+              취향 탐색으로
+            </button>
             <AccountLink />
           </div>
           <p className="flex items-center gap-2 text-xs font-bold tracking-[0.22em] text-primary">
@@ -758,13 +771,18 @@ export function GarmentScreen({
                 onOpenChange={setAttributesOpen}
                 title="옷 정보 확인 (선택)"
                 footer={
-                  <Button
+                  <StatusButton
                     className="h-11 w-full rounded-full"
-                    disabled={!canSaveAttributes || attributesMutation.isPending}
+                    status={attributesStatus}
+                    labels={{
+                      idle: "옷 정보 저장",
+                      pending: "저장 중…",
+                      success: "저장했어요",
+                      error: "다시 저장",
+                    }}
+                    disabled={!canSaveAttributes}
                     onClick={handleAttributesSave}
-                  >
-                    {attributesMutation.isPending ? "저장 중…" : "옷 정보 저장"}
-                  </Button>
+                  />
                 }
               >
                 <GarmentAttributes
@@ -844,15 +862,20 @@ export function GarmentScreen({
             {/* The section's entrance animation keeps a transform, which pins this "fixed" bar to the section's bottom on mobile; leave room so it never covers the last controls. */}
             <div aria-hidden="true" className="h-24 lg:hidden" />
             <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/90 px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:static lg:mt-9 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
-              <Button
+              <StatusButton
                 type="button"
                 size="lg"
                 className="tap-feedback h-12 w-full rounded-full text-base font-bold shadow-[0_10px_30px_-8px_color-mix(in_oklab,var(--color-primary)_55%,transparent)]"
+                status={saveStatus}
+                labels={{
+                  idle: "저장하기",
+                  pending: "저장 중…",
+                  success: "저장했어요",
+                  error: "다시 저장",
+                }}
                 disabled={!canSave}
                 onClick={handleSave}
-              >
-                {saveMutation.isPending ? "저장 중…" : "저장하기"}
-              </Button>
+              />
             </div>
           </section>
         </div>

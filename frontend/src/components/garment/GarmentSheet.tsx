@@ -20,7 +20,7 @@ export function GarmentSheet({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80" />
+        <Dialog.Overlay className="motion-sheet-overlay fixed inset-0 z-50 bg-background/80" />
         <Dialog.Content
           ref={contentRef}
           aria-describedby={undefined}
@@ -31,7 +31,7 @@ export function GarmentSheet({
               invalid.focus();
             }
           }}
-          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90svh] flex-col overflow-hidden rounded-t-lg border border-border bg-background text-foreground shadow-lg data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom motion-reduce:animate-none lg:inset-y-0 lg:left-auto lg:right-0 lg:h-svh lg:max-h-svh lg:w-[480px] lg:rounded-none lg:data-[state=open]:slide-in-from-right"
+          className="motion-sheet fixed inset-x-0 bottom-0 z-50 flex max-h-[90svh] flex-col overflow-hidden rounded-t-lg border border-border bg-background text-foreground shadow-lg lg:inset-y-0 lg:left-auto lg:right-0 lg:h-svh lg:max-h-svh lg:w-[480px] lg:rounded-none"
         >
           <header className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
             <Dialog.Title className="text-lg font-bold">{title}</Dialog.Title>

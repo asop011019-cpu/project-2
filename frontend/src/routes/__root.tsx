@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
-  Link,
   createRootRouteWithContext,
   useRouter,
   HeadContent,
@@ -17,6 +16,9 @@ import appCss from "../styles.css?url";
 import { Toaster } from "../components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
+/** The menswear/womenswear choice; "/" alone would replay the intro. */
+export const START_PATH = "/?explore=1";
+
 export function NotFoundComponent() {
   return (
     <main className="not-found-page">
@@ -25,8 +27,9 @@ export function NotFoundComponent() {
       </span>
       <h1>찾는 페이지가 없어요</h1>
       <p className="text-muted-foreground">주소가 바뀌었거나 존재하지 않는 페이지예요.</p>
+      {/* Straight to choosing menswear or womenswear, skipping the intro (user, 2026-10-28). */}
       <Button asChild className="summary-action mt-8">
-        <Link to="/">처음 화면으로</Link>
+        <a href={START_PATH}>처음 화면으로</a>
       </Button>
     </main>
   );
@@ -59,7 +62,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
             다시 시도
           </button>
           <a
-            href="/"
+            href={START_PATH}
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             홈으로 가기
