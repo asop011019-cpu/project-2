@@ -9,7 +9,12 @@ export function safeReturnTo(value: unknown, fallback = "/"): string {
     return fallback;
   return value;
 }
+const AUTH_PAGES = ["/login", "/consent-update"];
 export function currentReturnTo() {
+  // A later auth error can land after the first one already moved here: keep that destination
+  // instead of wrapping the login page inside its own returnTo.
+  if (AUTH_PAGES.includes(window.location.pathname))
+    return safeReturnTo(new URLSearchParams(window.location.search).get("returnTo"));
   return safeReturnTo(window.location.pathname + window.location.search);
 }
 export function authErrorDestination(status: number, code: string, returnTo: string) {

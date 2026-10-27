@@ -11,7 +11,7 @@ import {
   kakaoStartUrl,
   authMessage,
 } from "@/lib/auth-api";
-import { authErrorDestination, safeReturnTo } from "@/lib/auth-routing";
+import { authErrorDestination, currentReturnTo, safeReturnTo } from "@/lib/auth-routing";
 afterEach(() => vi.unstubAllGlobals());
 describe("AUTH-003 API", () => {
   it("explains restore confirmation expiry without a restart prompt", () => {
@@ -108,5 +108,16 @@ describe("AUTH-003 API", () => {
     expect(spy).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
     window.removeEventListener("auth-navigation", spy);
+  });
+  it("a second auth error after reaching the login page keeps the original destination", () => {
+    window.history.pushState({}, "", "/login?returnTo=%2Fconditions");
+    expect(currentReturnTo()).toBe("/conditions");
+    window.history.pushState({}, "", "/consent-update?returnTo=%2Fgarment");
+    expect(currentReturnTo()).toBe("/garment");
+    window.history.pushState({}, "", "/login?returnTo=%2F%2Fevil.example");
+    expect(currentReturnTo()).toBe("/");
+    window.history.pushState({}, "", "/conditions?x=1");
+    expect(currentReturnTo()).toBe("/conditions?x=1");
+    window.history.pushState({}, "", "/");
   });
 });

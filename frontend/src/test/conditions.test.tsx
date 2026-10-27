@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/onboarding-api";
-import { DRAFT_KEY, type Conditions } from "@/lib/conditions";
+import { DRAFT_KEY, conditionHints, unansweredLabels, type Conditions } from "@/lib/conditions";
 
 const api = vi.hoisted(() => ({ getConditions: vi.fn(), putConditions: vi.fn() }));
 vi.mock("@/lib/conditions-api", () => api);
@@ -43,6 +43,8 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     await waitFor(() => expect(status("cond-temp")).toHaveTextContent("아직 안 정함"));
     for (const id of ["cond-occ", "cond-form", "cond-budget"])
       expect(status(id)).toHaveTextContent("아직 안 정함");
+    // Each section says it once, in its header.
+    expect(within(section("기온")).getAllByText("아직 안 정함")).toHaveLength(1);
     expect(saveBtn()).toBeDisabled();
   });
 
@@ -98,7 +100,8 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     fireEvent.keyDown(low, { key: "ArrowLeft" });
     fireEvent.keyDown(low, { key: "ArrowLeft" });
     expect(low).toHaveAttribute("aria-valuetext", "8도, 쌀쌀함");
-    expect(status("cond-temp")).toHaveTextContent("8°C ~ 20°C");
+    expect(screen.getByTestId("cond-temp-value")).toHaveTextContent("8°C ~ 20°C");
+    expect(status("cond-temp")).toHaveTextContent("쌀쌀함 ~ 따뜻함");
     for (let i = 0; i < 20; i++) fireEvent.keyDown(high, { key: "ArrowLeft" });
     expect(high).toHaveAttribute("aria-valuenow", "8");
     fireEvent.keyDown(low, { key: "ArrowRight" });
@@ -192,7 +195,9 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
       updatedAt: "2026-10-27T00:00:00Z",
     });
     renderScreen();
-    await waitFor(() => expect(status("cond-temp")).toHaveTextContent("8°C ~ 20°C"));
+    await waitFor(() =>
+      expect(screen.getByTestId("cond-temp-value")).toHaveTextContent("8°C ~ 20°C"),
+    );
     expect(screen.getByRole("slider", { name: "격식 정도" })).toHaveAttribute(
       "aria-valuetext",
       "60, 조금 격식",
@@ -203,5 +208,48 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     expect(saveBtn()).toBeEnabled();
     await userEvent.click(within(occ).getByRole("button", { name: "일상" }));
     expect(saveBtn()).toBeDisabled();
+  });
+});
+
+describe("코디 조건 안내", { timeout: 15_000 }, () => {
+  it("어긋난 조합은 안내만 하고 값과 저장은 그대로 둔다", () => {
+    const base = { ...EMPTY };
+    expect(conditionHints({ ...base, occasions: ["formal_event"], formality: 30 })).toEqual({
+      formality: expect.stringContaining("격식 행사인데 격식을 낮게"),
+    });
+    expect(conditionHints({ ...base, occasions: ["formal_event"], formality: 40 })).toEqual({});
+    expect(conditionHints({ ...base, occasions: ["outdoor"], formality: 80 }).formality).toContain(
+      "야외활동인데 격식을 높게",
+    );
+    expect(conditionHints({ ...base, occasions: "any", formality: 0 })).toEqual({});
+    expect(conditionHints({ ...base, temperatureC: { min: 5, max: 20 } }).temperatureC).toContain(
+      "일교차가 15도",
+    );
+    expect(conditionHints({ ...base, temperatureC: { min: 6, max: 20 } })).toEqual({});
+    expect(unansweredLabels({ ...base, formality: "any" })).toEqual([
+      "기온",
+      "상황",
+      "추가 구매 예산",
+    ]);
+  });
+
+  it("화면은 안내를 해당 칸에 보이고, 정하지 않은 항목을 저장 버튼 위에 알린다", async () => {
+    api.getConditions.mockResolvedValue({
+      ...EMPTY,
+      occasions: ["formal_event"],
+      formality: 20,
+      updatedAt: "2026-10-27T00:00:00Z",
+    });
+    renderScreen();
+    expect(
+      await within(await screen.findByRole("region", { name: "격식" })).findByText(
+        /격식 행사인데 격식을 낮게/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("cond-unanswered")).toHaveTextContent(
+      "정하지 않은 항목(기온·추가 구매 예산)은 조건 없이 추천해요",
+    );
+    await userEvent.click(within(section("격식")).getByRole("button", { name: "상관없음" }));
+    expect(within(section("격식")).queryByText(/격식 행사인데/)).not.toBeInTheDocument();
   });
 });

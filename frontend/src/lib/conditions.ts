@@ -113,6 +113,43 @@ export function validateValues(v: ConditionValues): Partial<Record<keyof Conditi
   return errors;
 }
 
+export const FIELD_LABELS: Record<keyof ConditionValues, string> = {
+  temperatureC: "기온",
+  occasions: "상황",
+  formality: "격식",
+  additionalBudgetKrw: "추가 구매 예산",
+};
+
+/** 아직 정하지 않은(null) 항목 이름. "상관없음"은 정한 것으로 본다. */
+export function unansweredLabels(v: ConditionValues): string[] {
+  return (Object.keys(FIELD_LABELS) as (keyof ConditionValues)[])
+    .filter((k) => v[k] === null)
+    .map((k) => FIELD_LABELS[k]);
+}
+
+export const WIDE_TEMPERATURE_SPAN = 15;
+export const LOW_FORMALITY = 30;
+export const HIGH_FORMALITY = 80;
+
+/**
+ * 서로 어긋나 보이는 조합 안내. 저장은 막지 않고 값도 바꾸지 않는다(사용자가 고른 그대로 둔다).
+ */
+export function conditionHints(v: ConditionValues): Partial<Record<keyof ConditionValues, string>> {
+  const hints: Partial<Record<keyof ConditionValues, string>> = {};
+  const occasion = Array.isArray(v.occasions) ? v.occasions[0] : null;
+  const f = v.formality;
+  if (typeof f === "number") {
+    if (occasion === "formal_event" && f <= LOW_FORMALITY)
+      hints.formality = "격식 행사인데 격식을 낮게 골랐어요. 이대로 괜찮은지 확인해 주세요.";
+    else if (occasion === "outdoor" && f >= HIGH_FORMALITY)
+      hints.formality = "야외활동인데 격식을 높게 골랐어요. 이대로 괜찮은지 확인해 주세요.";
+  }
+  const t = v.temperatureC;
+  if (t && t !== "any" && t.max - t.min >= WIDE_TEMPERATURE_SPAN)
+    hints.temperatureC = `일교차가 ${t.max - t.min}도예요. 덥고 추운 때가 함께 있어 겹쳐 입을 옷이 필요할 수 있어요.`;
+  return hints;
+}
+
 /** 서버 issue.path → 화면 항목. */
 export function fieldForIssuePath(path: string | undefined): keyof ConditionValues | null {
   if (!path) return null;

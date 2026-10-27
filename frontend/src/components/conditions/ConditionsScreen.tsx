@@ -17,6 +17,7 @@ import {
   TEMP_MIN,
   clamp,
   clearDraft,
+  conditionHints,
   fieldForIssuePath,
   formalityLabel,
   formatBudgetInput,
@@ -27,6 +28,7 @@ import {
   sameValues,
   temperatureZone,
   toValues,
+  unansweredLabels,
   validateValues,
   writeDraft,
   type ConditionValues,
@@ -77,12 +79,14 @@ function Section({
   title,
   status,
   error,
+  hint,
   children,
 }: {
   id: string;
   title: string;
   status: string;
   error?: string | undefined;
+  hint?: string | undefined;
   children: ReactNode;
 }) {
   return (
@@ -96,6 +100,11 @@ function Section({
         </p>
       </div>
       <div className="mt-4 space-y-4">{children}</div>
+      {hint && !error && (
+        <p className="mt-3 rounded-xl bg-secondary px-3 py-2.5 text-sm leading-relaxed text-secondary-foreground">
+          {hint}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-3 text-sm text-destructive">
           {error}
@@ -249,6 +258,8 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
   if (budgetOutOfRange) errors.additionalBudgetKrw = BUDGET_RANGE_MESSAGE;
   const canSave =
     dirty && !mutation.isPending && !budgetOutOfRange && Object.keys(localErrors).length === 0;
+  const hints = conditionHints(values);
+  const unanswered = unansweredLabels(values);
 
   const handleSave = () => {
     if (!canSave) return;
@@ -265,8 +276,15 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
   // --- 기온 ---
   const t = values.temperatureC;
   const tRange = t && t !== "any" ? t : null;
+  // The big line shows the chosen numbers; the header then names the feel so the two never repeat.
   const tempStatus =
-    t === null ? "아직 안 정함" : t === "any" ? "상관없음" : `${t.min}°C ~ ${t.max}°C`;
+    t === null
+      ? "아직 안 정함"
+      : t === "any"
+        ? "상관없음"
+        : t.min === t.max || temperatureZone(t.min) === temperatureZone(t.max)
+          ? temperatureZone(t.min)
+          : `${temperatureZone(t.min)} ~ ${temperatureZone(t.max)}`;
   const setTemp = (min: number, max: number) =>
     update({
       temperatureC: { min: clamp(min, TEMP_MIN, TEMP_MAX), max: clamp(max, TEMP_MIN, TEMP_MAX) },
@@ -353,14 +371,22 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
 
         {query.data && (
           <div className="mt-8 space-y-4">
-            <Section id="cond-temp" title="기온" status={tempStatus} error={errors.temperatureC}>
-              <p className="text-3xl font-extrabold text-foreground" aria-live="polite">
-                {tRange
-                  ? `${tRange.min}°C ~ ${tRange.max}°C`
-                  : t === "any"
-                    ? "상관없음"
-                    : "아직 안 정함"}
-              </p>
+            <Section
+              id="cond-temp"
+              title="기온"
+              status={tempStatus}
+              error={errors.temperatureC}
+              hint={hints.temperatureC}
+            >
+              {tRange && (
+                <p
+                  className="text-3xl font-extrabold text-foreground"
+                  aria-live="polite"
+                  data-testid="cond-temp-value"
+                >
+                  {tRange.min}°C ~ {tRange.max}°C
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <StepButton
                   label="최저 기온 낮추기"
@@ -443,7 +469,13 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
               </div>
             </Section>
 
-            <Section id="cond-form" title="격식" status={formalityStatus} error={errors.formality}>
+            <Section
+              id="cond-form"
+              title="격식"
+              status={formalityStatus}
+              error={errors.formality}
+              hint={hints.formality}
+            >
               <div className="flex items-center gap-2">
                 <StepButton
                   label="격식 낮추기"
@@ -609,9 +641,16 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
 
             <div aria-hidden="true" className="h-24 lg:hidden" />
             <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/90 px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:static lg:mt-6 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
-              <p role="status" className="mb-2 min-h-5 text-center text-sm text-primary">
-                {savedNotice ? "저장했어요" : ""}
-              </p>
+              <div className="mb-2 min-h-5 text-center">
+                <p role="status" className="text-sm text-primary">
+                  {savedNotice ? "저장했어요" : ""}
+                </p>
+                {!savedNotice && unanswered.length > 0 && unanswered.length < 4 && (
+                  <p className="text-xs text-muted-foreground" data-testid="cond-unanswered">
+                    정하지 않은 항목({unanswered.join("·")})은 조건 없이 추천해요
+                  </p>
+                )}
+              </div>
               <Button
                 type="button"
                 size="lg"
