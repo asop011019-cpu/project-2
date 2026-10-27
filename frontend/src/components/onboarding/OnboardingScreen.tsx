@@ -458,7 +458,6 @@ export function OnboardingScreen({
     return () => clearTimeout(timer);
   }, [notice]);
 
-  const stepIndex = step === "category" ? "01" : step === "explore" ? "02" : "03";
   useEffect(() => {
     if (onBeforeStart)
       writeAuthDraft("onboarding", { step, previewCategory, openGenre, viewStyleId, intro });
@@ -487,7 +486,6 @@ export function OnboardingScreen({
       ) : (
         <div className="onboarding-shell">
           <header className="onboarding-header items-center">
-            <AccountLink />
             <span className="onboarding-header-start">
               {/* The category step comes straight after the intro, so it has no back button (user, 2026-10-28). */}
               {step !== "category" && !sessionQuery.isPending && (
@@ -507,9 +505,8 @@ export function OnboardingScreen({
               )}
               <span className="label-caps">입고 싶은 가능성</span>
             </span>
-            <span className="label-caps text-muted-foreground">
-              <span className="text-foreground">{stepIndex}</span> / 03
-            </span>
+            {/* Account sits top right on every screen; the step count is gone (user, 2026-10-28). */}
+            <AccountLink />
           </header>
 
           {is401 && (
