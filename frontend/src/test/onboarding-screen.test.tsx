@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -279,7 +279,7 @@ describe("OnboardingScreen", () => {
     api.getSummary.mockResolvedValue(summary(false));
     const onComplete = renderScreen();
     await userEvent.click(await screen.findByRole("button", { name: "취향 확인하기" }));
-    const done = await screen.findByRole("button", { name: /기준 하의 등록으로/ });
+    const done = await screen.findByRole("button", { name: /사진 등록으로/ });
     await waitFor(() => expect(done).toBeDisabled());
     expect(screen.getByText(/응답하지 않은 스타일이 1개/)).toBeInTheDocument();
     expect(onComplete).not.toHaveBeenCalled();
@@ -302,12 +302,60 @@ describe("OnboardingScreen", () => {
     api.completeSession.mockResolvedValueOnce(session({ status: "completed" }));
     const onComplete = renderScreen();
     await userEvent.click(await screen.findByRole("button", { name: "취향 확인하기" }));
-    const done = await screen.findByRole("button", { name: /기준 하의 등록으로/ });
+    const done = await screen.findByRole("button", { name: /사진 등록으로/ });
     await waitFor(() => expect(done).toBeEnabled());
     await userEvent.click(done);
     await screen.findByText("저장에 실패했어요. 다시 시도해 주세요.");
     expect(onComplete).not.toHaveBeenCalled();
     await userEvent.click(done);
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+  });
+
+  it("요약 화면을 오른쪽에서 왼쪽으로 밀면 책장처럼 넘어가 저장 후 이동, 짧게 밀면 제자리", async () => {
+    setupOnline(session());
+    api.getSummary.mockResolvedValue({
+      session: session({ progress: { ...session().progress, canComplete: true } }),
+      likedStyles: [],
+      dislikedStyles: [],
+      skippedStyles: [],
+      unansweredStyleIds: [],
+      likedImages: [],
+      isExploringOnly: false,
+    });
+    api.completeSession.mockResolvedValue(session({ status: "completed" }));
+    const onComplete = renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "취향 확인하기" }));
+    const hint = await screen.findByRole("button", { name: /사진 등록으로/ });
+    await waitFor(() => expect(hint).toBeEnabled());
+    const page = hint.closest(".page-turn-page") as HTMLElement;
+    // jsdom has no PointerEvent; a MouseEvent with a pointer id is enough here.
+    if (!("PointerEvent" in window))
+      Object.assign(window, {
+        PointerEvent: class extends MouseEvent {
+          pointerId: number;
+          pointerType: string;
+          constructor(type: string, init: PointerEventInit = {}) {
+            super(type, init);
+            this.pointerId = init.pointerId ?? 1;
+            this.pointerType = init.pointerType ?? "touch";
+          }
+        },
+      });
+    const drag = async (toX: number, toY = 100) => {
+      fireEvent.pointerDown(page, { pointerId: 1, clientX: 900, clientY: 100, button: 0 });
+      fireEvent.pointerMove(page, { pointerId: 1, clientX: 880, clientY: toY });
+      fireEvent.pointerMove(page, { pointerId: 1, clientX: toX, clientY: toY });
+      // Slow enough that only the distance decides, not a flick.
+      await new Promise((r) => setTimeout(r, 400));
+      fireEvent.pointerUp(page, { pointerId: 1, clientX: toX, clientY: toY });
+    };
+    await drag(800); // short: springs back
+    await drag(880, 400); // mostly vertical: a scroll, not a turn
+    expect(api.completeSession).not.toHaveBeenCalled();
+    expect(page.style.transform).toBe("");
+    await drag(300); // past a third of the width
+    expect(page.style.transform).toContain("rotateY(-95deg)");
+    await waitFor(() => expect(api.completeSession).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
   });
 });
