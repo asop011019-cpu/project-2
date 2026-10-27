@@ -68,3 +68,7 @@ SQLite `STRICT`, CHECK, UNIQUE, 복합 FK를 사용합니다. 스타일과 상�
 ## GAR-001
 
 스키마 v3의 garments는 onboarding_sessions에 FK로 연결된 세션당 한 행이다. 의류 종류·보완 정보·비공개 파일명·저장본 크기·시각을 보관한다. 파일 수명과 복구 조건은 [GARMENT_API.md](GARMENT_API.md)를 따른다.
+
+## COND-001 (계약안, 미구현)
+
+스키마 v9 제안: `recommendation_conditions(session_id PK → onboarding_sessions ON DELETE CASCADE, vocabulary_version, values_json, updated_at)` STRICT 1행. 기존 표는 바꾸지 않는 추가 전용 마이그레이션. 미입력은 행 없음 또는 해당 키 null, 상관없음은 `"any"`로 저장해 둘을 섞지 않는다. 계약은 [API.md](API.md#추천-조건-cond-001-계약안--검토-전-미구현).
