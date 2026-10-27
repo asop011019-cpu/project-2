@@ -16,8 +16,12 @@ export function IntroScreen({ onStart }: { onStart: () => void }) {
 
       <div className="intro-composition">
         <h1 aria-label="입고 싶은 가능성" className="intro-title">
-          <span aria-hidden="true">입고 싶은</span>
-          <span aria-hidden="true">가능성</span>
+          <span aria-hidden="true" className="intro-line">
+            <span>입고 싶은</span>
+          </span>
+          <span aria-hidden="true" className="intro-line">
+            <span>가능성</span>
+          </span>
         </h1>
         <p className="intro-subtitle">
           좋아하는 스타일에서
