@@ -27,6 +27,7 @@ export function authCookies(config: AppConfig) {
     session: name("auth"),
     oauth: name("auth-oauth"),
     signup: name("auth-signup"),
+    restore: name("auth-restore"),
   };
   // Lax: the Kakao redirect back to us is a cross-site navigation, which Strict cookies would miss.
   // Mutations stay protected by the X-Onboarding-Request header and Origin checks.
@@ -138,6 +139,10 @@ export function registerAuthRoutes(
         cookies.set(reply, "signup", result.token, handshakeExpiry());
         return reply.redirect("/signup", 302);
       }
+      if (result.kind === "restore") {
+        cookies.set(reply, "restore", result.token, handshakeExpiry());
+        return reply.redirect("/restore", 302);
+      }
       cookies.set(reply, "session", result.token, result.expiresAt);
       return reply.redirect(result.returnTo, 302);
     } catch (error) {
@@ -161,6 +166,16 @@ export function registerAuthRoutes(
     return auth.document(params.key, params.version);
   });
 
+  app.get(`${prefix}/restore/pending`, (request) =>
+    auth.pendingRestore(request.cookies[cookies.names.restore]),
+  );
+  app.post(`${prefix}/restore`, (request, reply) => {
+    z.object({}).strict().parse(request.body ?? {});
+    const result = auth.restore(request.cookies[cookies.names.restore]);
+    cookies.clear(reply, "restore");
+    cookies.set(reply, "session", result.token, result.expiresAt);
+    return { user: { id: result.userId }, returnTo: result.returnTo };
+  });
   app.get(`${prefix}/signup/pending`, (request) =>
     auth.pendingSignup(request.cookies[cookies.names.signup]),
   );

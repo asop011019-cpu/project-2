@@ -101,6 +101,7 @@ function gate(c: Context) {
 
 test("a rejoin while the unlink is in flight is refused, then allowed; the new account is never unlinked", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const old = await member(c, "9400");
   const release = gate(c);
@@ -127,6 +128,7 @@ test("a rejoin while the unlink is in flight is refused, then allowed; the new a
 
 test("a signup started before the unlink is held until the unlink finishes", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const old = await member(c, "9500");
   c.kakao.unlinkMode = "not_configured";
@@ -154,6 +156,7 @@ test("a signup started before the unlink is held until the unlink finishes", asy
 
 test("a crashed unlink frees the member after the lease; a rejoined member is then not unlinked", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const old = await member(c, "9600");
   c.kakao.unlinkMode = "not_configured";
@@ -179,6 +182,7 @@ test("a crashed unlink frees the member after the lease; a rejoined member is th
 
 test("a database failure mid-deletion keeps the job and other accounts intact and completes on retry", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const a = await member(c, "9700"),
     b = await member(c, "9701");
@@ -219,6 +223,7 @@ test("a database failure mid-deletion keeps the job and other accounts intact an
 
 test("double requests and concurrent retries create one job and unlink once", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const a = await member(c, "9800");
   await putGarment(c, a.user.cookie, 80);
@@ -266,6 +271,7 @@ test("double requests and concurrent retries create one job and unlink once", as
 
 test("a photo already removed by an interrupted run does not block the deletion", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const a = await member(c, "9900");
   await putGarment(c, a.user.cookie, 90);

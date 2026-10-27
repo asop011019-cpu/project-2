@@ -155,14 +155,21 @@ export function buildApp(
     options.now,
     (userId) => service.deleteForUser(userId),
   );
-  // Resume account deletions interrupted by a crash or a provider outage.
-  app.addHook("onReady", async () => {
+  // Run deletions whose 30-day grace has ended, and resume ones interrupted by a crash or a
+  // provider outage: once at start, then every deletionSweepSeconds.
+  const sweep = () =>
     auth
       .processDeletions()
       .catch((error: unknown) =>
-        app.log.error({ err: error }, "Resuming account deletions failed"),
+        app.log.error({ err: error }, "Account deletion sweep failed"),
       );
+  let sweeper: NodeJS.Timeout | undefined;
+  app.addHook("onReady", async () => {
+    void sweep();
+    sweeper = setInterval(sweep, config.auth.deletionSweepSeconds * 1000);
+    sweeper.unref();
   });
+  app.addHook("onClose", async () => clearInterval(sweeper));
   const guard = createAuthGuard(auth, config);
   registerAuthRoutes(app, auth, config, guard);
   registerOnboardingRoutes(app, service, guard);

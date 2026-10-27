@@ -7,6 +7,17 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { buildApp } from "../src/app.ts";
 import { context, client, publish, fixturePng } from "./helpers.ts";
+import type { Context } from "./helpers.ts";
+
+// The reopened servers run on the real clock, where newer consent versions are in force;
+// accept them up front so these tests stay about restoring progress.
+function acceptCurrentDocuments(c: Context) {
+  c.db
+    .prepare(
+      "UPDATE user_consents SET version=(SELECT max(version) FROM consent_documents d WHERE d.key=user_consents.key)",
+    )
+    .run();
+}
 
 async function freePort(): Promise<number> {
   const server = createServer();
@@ -52,6 +63,7 @@ test("closing and reopening the database restores the exact snapshot and prefere
   const before = (
     await visitor.request("GET", "/api/onboarding/session")
   ).json();
+  acceptCurrentDocuments(c);
   await c.app.close();
   reopened = buildApp({ config: c.config, logger: false });
   const response = await reopened.app.inject({
@@ -78,6 +90,7 @@ test(
     const visitor = client(c);
     await visitor.login();
     const cookie = visitor.cookie;
+    acceptCurrentDocuments(c);
     await c.app.close();
     const port = await freePort(),
       origin = `http://127.0.0.1:${port}`;

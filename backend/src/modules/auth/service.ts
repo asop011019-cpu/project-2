@@ -206,6 +206,7 @@ export class AuthService {
   ): Promise<
     | { kind: "session"; token: string; expiresAt: string; returnTo: string }
     | { kind: "signup"; token: string }
+    | { kind: "restore"; token: string }
   > {
     const subject = await this.provider!.subjectFor(code);
     return this.transaction(() => {
@@ -216,12 +217,29 @@ export class AuthService {
         .get(this.provider!.name, subject) as
         { userId: string; status: string } | undefined;
       if (identity) {
-        if (identity.status !== "active")
-          throw new DomainError(
-            403,
-            "ACCOUNT_UNAVAILABLE",
-            "탈퇴 처리 중인 계정이에요.",
-          );
+        if (identity.status !== "active") {
+          // Within the grace period, logging in again offers to restore the withdrawn account.
+          if (!this.restorableDeletion(identity.userId))
+            throw new DomainError(
+              403,
+              "ACCOUNT_UNAVAILABLE",
+              "탈퇴 처리 중인 계정이에요.",
+            );
+          const token = newToken();
+          this.db
+            .prepare("DELETE FROM pending_restores WHERE expires_at<=?")
+            .run(this.at());
+          this.db
+            .prepare("INSERT INTO pending_restores VALUES(?,?,?,?,?)")
+            .run(
+              sha256(token),
+              identity.userId,
+              returnTo,
+              this.at(),
+              this.at(this.config.handshakeTtlSeconds),
+            );
+          return { kind: "restore" as const, token };
+        }
         return {
           kind: "session" as const,
           ...this.createSession(identity.userId),
@@ -636,7 +654,7 @@ export class AuthService {
         .run(now, context.userId);
       this.db
         .prepare(
-          "INSERT INTO account_deletions(id,user_id,provider,provider_subject,stage,attempts,last_error,created_at,updated_at) VALUES(?,?,?,?,'pending',0,NULL,?,?)",
+          "INSERT INTO account_deletions(id,user_id,provider,provider_subject,stage,attempts,last_error,created_at,updated_at,scheduled_at) VALUES(?,?,?,?,'pending',0,NULL,?,?,?)",
         )
         .run(
           randomUUID(),
@@ -645,6 +663,7 @@ export class AuthService {
           identity?.subject ?? null,
           now,
           now,
+          this.at(this.config.deletionGraceSeconds),
         );
       this.db
         .prepare(
@@ -653,6 +672,70 @@ export class AuthService {
         .run(now, context.userId);
     });
     await this.processDeletions();
+  }
+
+  /** The pending deletion job of this user if it has not started and its grace period is still open. */
+  private restorableDeletion(
+    userId: string,
+  ): { id: string; scheduledAt: string } | undefined {
+    return this.db
+      .prepare(
+        "SELECT id, scheduled_at AS scheduledAt FROM account_deletions WHERE user_id=? AND stage='pending' AND scheduled_at>?",
+      )
+      .get(userId, this.at()) as { id: string; scheduledAt: string } | undefined;
+  }
+  private pendingRestoreRow(token: string | undefined) {
+    const row =
+      token && TOKEN.test(token)
+        ? (this.db
+            .prepare(
+              "SELECT user_id AS userId, return_to AS returnTo, expires_at AS expiresAt FROM pending_restores WHERE token_hash=?",
+            )
+            .get(sha256(token)) as
+            | { userId: string; returnTo: string; expiresAt: string }
+            | undefined)
+        : undefined;
+    const deletion = row && this.restorableDeletion(row.userId);
+    if (!row || row.expiresAt <= this.at() || !deletion)
+      throw new DomainError(
+        410,
+        "RESTORE_EXPIRED",
+        "복구할 수 있는 시간이 지났어요. 다시 로그인해 주세요.",
+      );
+    return { ...row, deletion };
+  }
+  /** What the restore screen shows: when the withdrawn account will be deleted. */
+  pendingRestore(token: string | undefined): { deletionScheduledAt: string } {
+    return {
+      deletionScheduledAt: this.pendingRestoreRow(token).deletion.scheduledAt,
+    };
+  }
+  /** Cancels the withdrawal after the user confirmed on the restore screen and logs them in. */
+  restore(token: string | undefined): {
+    userId: string;
+    token: string;
+    expiresAt: string;
+    returnTo: string;
+  } {
+    return this.transaction(() => {
+      const row = this.pendingRestoreRow(token);
+      this.db
+        .prepare("DELETE FROM pending_restores WHERE user_id=?")
+        .run(row.userId);
+      this.db
+        .prepare("DELETE FROM account_deletions WHERE id=?")
+        .run(row.deletion.id);
+      this.db
+        .prepare(
+          "UPDATE users SET status='active', deleted_at=NULL WHERE id=?",
+        )
+        .run(row.userId);
+      return {
+        userId: row.userId,
+        ...this.createSession(row.userId),
+        returnTo: row.returnTo,
+      };
+    });
   }
 
   /** True while a deletion job is unlinking this Kakao member (claim younger than the lease). */
@@ -680,9 +763,9 @@ export class AuthService {
   private async runDeletions(): Promise<void> {
     const jobs = this.db
       .prepare(
-        "SELECT id, user_id AS userId, provider_subject AS subject, stage FROM account_deletions WHERE stage!='done' ORDER BY created_at",
+        "SELECT id, user_id AS userId, provider_subject AS subject, stage FROM account_deletions WHERE stage!='done' AND (scheduled_at IS NULL OR scheduled_at<=?) ORDER BY created_at",
       )
-      .all() as unknown as {
+      .all(this.at()) as unknown as {
       id: string;
       userId: string;
       subject: string | null;

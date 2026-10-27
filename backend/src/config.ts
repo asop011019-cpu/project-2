@@ -20,6 +20,9 @@ export interface AuthConfig {
   handshakeTtlSeconds: number;
   reauthWindowSeconds: number;
   unlinkLeaseSeconds: number;
+  /** User decision 2026-10-27: data is kept this long after withdrawal and can be restored. */
+  deletionGraceSeconds: number;
+  deletionSweepSeconds: number;
   kakao?: {
     restApiKey: string;
     clientSecret?: string;
@@ -81,6 +84,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       reauthWindowSeconds: 600,
       // Longer than the 10 s Kakao request timeout; a crashed unlink frees the member after this.
       unlinkLeaseSeconds: 60,
+      deletionGraceSeconds: seconds(
+        env.AUTH_DELETION_GRACE_SECONDS,
+        60 * 60 * 24 * 30,
+      ),
+      deletionSweepSeconds: 60 * 60,
       ...(env.KAKAO_REST_API_KEY
         ? {
             kakao: {

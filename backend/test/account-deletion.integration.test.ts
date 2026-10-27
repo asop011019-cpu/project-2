@@ -84,6 +84,7 @@ const job = (c: Context, userId: string) => ({
 
 test("deletion needs a fresh login, removes every row and photo, unlinks Kakao and leaves other accounts alone", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const a = await member(c, "9001"),
     b = await member(c, "9002");
@@ -172,6 +173,7 @@ test("deletion needs a fresh login, removes every row and photo, unlinks Kakao a
 
 test("a failed photo deletion keeps the account locked and is retried, also after a restart", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   let reopened: ReturnType<typeof buildApp> | undefined;
   t.after(async () => {
     await reopened?.app.close();
@@ -236,6 +238,7 @@ test("a failed photo deletion keeps the account locked and is retried, also afte
 
 test("without a Kakao admin key the data is deleted but the unlink step waits, keeping only the member number", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const a = await member(c, "9200");
   c.kakao.unlinkMode = "not_configured";
@@ -270,6 +273,7 @@ test("without a Kakao admin key the data is deleted but the unlink step waits, k
 
 test("a delayed unlink is skipped when the same Kakao member has already joined again", async (t) => {
   const c = await context();
+  c.config.auth.deletionGraceSeconds = 0; // these cases are about the deletion itself, not the grace
   t.after(c.cleanup);
   const old = await member(c, "9300");
   c.kakao.unlinkMode = "not_configured";

@@ -125,6 +125,13 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
   // v6 (AUTH-004-R1): when a deletion job started unlinking Kakao; new signups for that member
   // wait while it is fresh so a delayed unlink cannot cut a connection made in the meantime.
   `ALTER TABLE account_deletions ADD COLUMN unlink_started_at TEXT;`,
+  // v7 (AUTH-004-R2): 30-day grace before deletion runs (NULL = due now, for earlier jobs) and
+  // short-lived handshakes for restoring an account by logging in again during the grace period.
+  `ALTER TABLE account_deletions ADD COLUMN scheduled_at TEXT;
+   CREATE TABLE pending_restores (
+     token_hash TEXT PRIMARY KEY CHECK(length(token_hash)=64), user_id TEXT NOT NULL,
+     return_to TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+   ) STRICT;`,
 ];
 
 /** Applies pending migrations; `target` (tests only) stops at an older schema version. */

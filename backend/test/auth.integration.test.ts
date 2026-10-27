@@ -296,7 +296,7 @@ test("a new required document version blocks protected APIs until accepted; requ
   assert.equal(doc.required, true);
   c.db
     .prepare(
-      "INSERT INTO consent_documents VALUES('privacy_required',2,1,'개인정보 v2','test-only v2 body for re-consent','x',?)",
+      "INSERT INTO consent_documents VALUES('privacy_required',99,1,'개인정보 v99','test-only v2 body for re-consent','x',?)",
     )
     .run(new Date(Date.parse("2026-10-23T01:00:00.000Z") - 1).toISOString());
   let result = await user.request("GET", session);
@@ -304,7 +304,7 @@ test("a new required document version blocks protected APIs until accepted; requ
   assert.equal(result.json().error.code, "CONSENT_UPDATE_REQUIRED");
   const me = (await user.request("GET", "/api/auth/me")).json();
   assert.deepEqual(me.consentUpdates, [
-    { key: "privacy_required", version: 2 },
+    { key: "privacy_required", version: 99 },
   ]);
   result = await user.request("PUT", "/api/auth/consents", {
     key: "privacy_required",
@@ -314,7 +314,7 @@ test("a new required document version blocks protected APIs until accepted; requ
   assert.equal(result.statusCode, 409);
   result = await user.request("PUT", "/api/auth/consents", {
     key: "privacy_required",
-    version: 2,
+    version: 99,
     granted: false,
   });
   assert.equal(
@@ -323,7 +323,7 @@ test("a new required document version blocks protected APIs until accepted; requ
   );
   result = await user.request("PUT", "/api/auth/consents", {
     key: "privacy_required",
-    version: 2,
+    version: 99,
     granted: true,
   });
   assert.equal(result.statusCode, 200);
