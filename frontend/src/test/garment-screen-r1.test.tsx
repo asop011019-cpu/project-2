@@ -94,6 +94,7 @@ describe("GarmentScreen R1", () => {
     const queryClient = new QueryClient();
     const first = renderScreen(queryClient);
 
+    await userEvent.click(await screen.findByRole("button", { name: "추가 정보 입력 (선택)" }));
     await waitFor(() => {
       expect(screen.getByLabelText(/브랜드/)).toHaveValue("브랜드");
     });
@@ -101,6 +102,8 @@ describe("GarmentScreen R1", () => {
     const brandInput = screen.getByLabelText(/브랜드/);
     await userEvent.clear(brandInput);
     await userEvent.type(brandInput, "새 브랜드");
+    if (screen.queryByRole("button", { name: "적용" }))
+      await userEvent.click(screen.getByRole("button", { name: "적용" }));
     await userEvent.click(screen.getByRole("button", { name: "저장하기" }));
 
     await waitFor(() => {
@@ -112,6 +115,7 @@ describe("GarmentScreen R1", () => {
     apiMocks.getGarment.mockResolvedValue(savedGarment);
     renderScreen(queryClient);
 
+    await userEvent.click(await screen.findByRole("button", { name: "추가 정보 입력 (선택)" }));
     await waitFor(() => {
       expect(screen.getByLabelText(/브랜드/)).toHaveValue("새 브랜드");
     });
@@ -168,6 +172,8 @@ describe("GarmentScreen R1", () => {
     });
     await userEvent.click(screen.getByRole("button", { name: "바지" }));
 
+    if (screen.queryByRole("button", { name: "적용" }))
+      await userEvent.click(screen.getByRole("button", { name: "적용" }));
     await userEvent.click(screen.getByRole("button", { name: "저장하기" }));
     await waitFor(() => {
       expect(screen.getByText(/저장에 실패했어요/)).toBeInTheDocument();
@@ -219,12 +225,14 @@ describe("GarmentScreen R1", () => {
     await waitFor(() => {
       expect(screen.getByText(/저장된 사진을 불러오지 못했어요/)).toBeInTheDocument();
     });
+    await userEvent.click(screen.getByRole("button", { name: "추가 정보 입력 (선택)" }));
     // 입력은 그대로 남아 있다
     expect(screen.getByLabelText(/브랜드/)).toHaveValue("브랜드");
     expect(screen.getByLabelText(/제품명/)).toHaveValue("와이드 슬랙스");
     // 자동 초기화 없음
     expect(apiMocks.resetSession).not.toHaveBeenCalled();
 
+    await userEvent.click(screen.getByRole("button", { name: "적용" }));
     // 재시도하면 캐시 우회 쿼리를 붙여 다시 요청한다
     await userEvent.click(screen.getByRole("button", { name: "사진 다시 불러오기" }));
     await waitFor(() => {
@@ -273,6 +281,7 @@ describe("GarmentScreen R1", () => {
     const queryClient = new QueryClient();
     renderScreen(queryClient);
 
+    await userEvent.click(await screen.findByRole("button", { name: "추가 정보 입력 (선택)" }));
     await waitFor(() => {
       expect(screen.getByLabelText(/브랜드/)).toHaveValue("브랜드");
     });
@@ -283,6 +292,8 @@ describe("GarmentScreen R1", () => {
     const brandInput = screen.getByLabelText(/브랜드/);
     await userEvent.clear(brandInput);
     await userEvent.type(brandInput, "새 브랜드");
+    if (screen.queryByRole("button", { name: "적용" }))
+      await userEvent.click(screen.getByRole("button", { name: "적용" }));
     await userEvent.click(screen.getByRole("button", { name: "저장하기" }));
 
     await waitFor(() => {
@@ -293,6 +304,7 @@ describe("GarmentScreen R1", () => {
     resolveLateGet?.(savedGarment);
     await refetchPromise;
     expect(queryClient.getQueryData(RESTORE_QUERY_KEY)).toEqual(updated);
+    await userEvent.click(screen.getByRole("button", { name: "추가 정보 입력 (선택)" }));
     expect(screen.getByLabelText(/브랜드/)).toHaveValue("새 브랜드");
   });
 });

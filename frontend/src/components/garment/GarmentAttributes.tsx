@@ -11,6 +11,7 @@ import type { GarmentType } from "@/lib/onboarding-api";
 import { cn } from "@/lib/utils";
 
 interface GarmentAttributesProps {
+  hideSave?: boolean;
   garmentType: GarmentType;
   values: AttributeValues;
   rawText: string;
@@ -35,6 +36,7 @@ function isSelected(values: AttributeValues, axis: AxisDef, value: string): bool
 }
 
 export function GarmentAttributes({
+  hideSave = false,
   garmentType,
   values,
   rawText,
@@ -51,7 +53,7 @@ export function GarmentAttributes({
   const axes = axesForType(garmentType);
 
   return (
-    <section aria-label="옷 정보 확인" className="border-t border-border pt-7">
+    <section aria-label="옷 정보 확인">
       <div className="flex items-baseline gap-2">
         <span className="text-xs font-bold tracking-[0.18em] text-primary">03</span>
         <span className="text-sm font-bold text-foreground">옷 정보 확인</span>
@@ -96,7 +98,8 @@ export function GarmentAttributes({
                 {options.map((option) => {
                   const selected = isSelected(values, axis, option.value);
                   return (
-                    <button
+                    <Button
+                      variant="ghost"
                       key={option.value}
                       type="button"
                       aria-pressed={selected}
@@ -111,7 +114,7 @@ export function GarmentAttributes({
                       )}
                     >
                       {option.label}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -141,15 +144,17 @@ export function GarmentAttributes({
         </p>
       )}
 
-      <Button
-        type="button"
-        variant="outline"
-        className="tap-feedback mt-5 h-11 w-full rounded-full border-input bg-transparent font-bold"
-        disabled={!canSave}
-        onClick={onSave}
-      >
-        {saving ? "저장 중…" : "옷 정보 저장"}
-      </Button>
+      {!hideSave && (
+        <Button
+          type="button"
+          variant="outline"
+          className="tap-feedback mt-5 h-11 w-full rounded-full border-input bg-transparent font-bold"
+          disabled={!canSave}
+          onClick={onSave}
+        >
+          {saving ? "저장 중…" : "옷 정보 저장"}
+        </Button>
+      )}
     </section>
   );
 }

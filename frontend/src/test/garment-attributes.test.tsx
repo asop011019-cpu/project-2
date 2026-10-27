@@ -141,16 +141,17 @@ describe("garment-attributes 유닛", () => {
 
   it("데님 워싱은 소재감이 데님일 때만 보인다", () => {
     const wash = AXES.find((a) => a.key === "color.denimWash");
-    expect(wash).toBeDefined();
-    expect(visibleOptions(wash!, "pants", { materialLook: "denim" }).length).toBeGreaterThan(0);
-    expect(visibleOptions(wash!, "pants", { materialLook: "suiting" })).toEqual([]);
-    expect(visibleOptions(wash!, "pants", {})).toEqual([]);
+    if (!wash) throw new Error("wash axis missing");
+    expect(visibleOptions(wash, "pants", { materialLook: "denim" }).length).toBeGreaterThan(0);
+    expect(visibleOptions(wash, "pants", { materialLook: "suiting" })).toEqual([]);
+    expect(visibleOptions(wash, "pants", {})).toEqual([]);
   });
 
   it("실루엣·기장은 종류별 표시 값만 보여 주되 값은 그대로다", () => {
     const silhouette = AXES.find((a) => a.key === "silhouette");
-    const pantsValues = visibleOptions(silhouette!, "pants", {}).map((o) => o.value);
-    const skirtValues = visibleOptions(silhouette!, "skirt", {}).map((o) => o.value);
+    if (!silhouette) throw new Error("silhouette axis missing");
+    const pantsValues = visibleOptions(silhouette, "pants", {}).map((o) => o.value);
+    const skirtValues = visibleOptions(silhouette, "skirt", {}).map((o) => o.value);
     expect(pantsValues).toContain("wide");
     expect(pantsValues).not.toContain("mermaid");
     expect(skirtValues).toContain("mermaid");
@@ -158,8 +159,9 @@ describe("garment-attributes 유닛", () => {
     expect(skirtValues[0]).toBe("straight");
 
     const length = AXES.find((a) => a.key === "length");
-    const pantsLength = visibleOptions(length!, "pants", {}).map((o) => o.value);
-    const skirtLength = visibleOptions(length!, "skirt", {}).map((o) => o.value);
+    if (!length) throw new Error("length axis missing");
+    const pantsLength = visibleOptions(length, "pants", {}).map((o) => o.value);
+    const skirtLength = visibleOptions(length, "skirt", {}).map((o) => o.value);
     expect(pantsLength).toEqual([
       "full",
       "ankle",
@@ -172,7 +174,80 @@ describe("garment-attributes 유닛", () => {
   });
 });
 
-describe("GarmentScreen 옷 정보 확인", () => {
+// These tests type and click through sheets; under a full parallel run they exceed the 5s default.
+describe("GarmentScreen 옷 정보 확인", { timeout: 15_000 }, () => {
+  it("두 입력창은 닫혀 시작하며 닫아도 선택값·글과 요약이 유지된다", async () => {
+    apiMocks.ensureSession.mockResolvedValue(undefined);
+    apiMocks.getGarment.mockResolvedValue(makeGarment("pants"));
+    renderScreen();
+    await screen.findByRole("button", { name: "옷 정보 확인 (선택)" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/브랜드/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "검정" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
+    await userEvent.click(screen.getByRole("button", { name: "검정" }));
+    await userEvent.type(screen.getByLabelText(/직접 적기/), "면 라벨");
+    await userEvent.click(screen.getByRole("button", { name: "닫기" }));
+    expect(screen.getByRole("button", { name: "옷 정보 확인 (선택)" })).toHaveTextContent(
+      "1개 항목 선택",
+    );
+    expect(screen.getByRole("button", { name: "옷 정보 확인 (선택)" })).toHaveTextContent(
+      "저장 안 된 변경 있음",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
+    expect(screen.getByRole("button", { name: "검정" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText(/직접 적기/)).toHaveValue("면 라벨");
+  });
+
+  it("추가 정보 적용은 요청하지 않고 본문 저장 때 값을 보내며 검증 실패 시 자동으로 열린다", async () => {
+    const saved = makeGarment("pants");
+    apiMocks.ensureSession.mockResolvedValue(undefined);
+    apiMocks.getGarment.mockResolvedValue(saved);
+    apiMocks.putGarment.mockResolvedValue({ ...saved, brand: "새 브랜드" });
+    renderScreen();
+    await screen.findByRole("button", { name: "옷 정보 확인 (선택)" });
+    await userEvent.click(screen.getByRole("button", { name: "추가 정보 입력 (선택)" }));
+    await userEvent.type(screen.getByLabelText(/브랜드/), "새 브랜드");
+    await userEvent.type(screen.getByLabelText(/구매처 링크/), "invalid");
+    await userEvent.click(screen.getByRole("button", { name: "적용" }));
+    expect(apiMocks.putGarment).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "추가 정보 입력 (선택)" })).toHaveTextContent(
+      "브랜드·구매처 링크 입력됨",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "저장하기" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("링크 형식을 확인해 주세요.");
+    expect(screen.getByLabelText(/브랜드/)).toHaveValue("새 브랜드");
+    await userEvent.clear(screen.getByLabelText(/구매처 링크/));
+    await userEvent.click(screen.getByRole("button", { name: "적용" }));
+    await userEvent.click(screen.getByRole("button", { name: "저장하기" }));
+    await waitFor(() =>
+      expect(apiMocks.putGarment).toHaveBeenCalledWith(
+        { garmentType: "pants", brand: "새 브랜드", productName: null, purchaseUrl: null },
+        undefined,
+      ),
+    );
+  });
+
+  it("서버 추가 정보 오류는 입력창을 자동으로 열고 입력을 보존한다", async () => {
+    apiMocks.ensureSession.mockResolvedValue(undefined);
+    apiMocks.getGarment.mockResolvedValue(makeGarment("pants"));
+    apiMocks.putGarment.mockRejectedValue(
+      new ApiError({
+        status: 400,
+        code: "INVALID_INPUT",
+        message: "확인 필요",
+        issues: [{ path: "brand", message: "브랜드 확인 필요" }],
+      }),
+    );
+    renderScreen();
+    await screen.findByRole("button", { name: "옷 정보 확인 (선택)" });
+    await userEvent.click(screen.getByRole("button", { name: "추가 정보 입력 (선택)" }));
+    await userEvent.type(screen.getByLabelText(/브랜드/), "입력 브랜드");
+    await userEvent.click(screen.getByRole("button", { name: "적용" }));
+    await userEvent.click(screen.getByRole("button", { name: "저장하기" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("브랜드 확인 필요");
+    expect(screen.getByLabelText(/브랜드/)).toHaveValue("입력 브랜드");
+  });
   const cases: {
     type: GarmentType;
     typeLabel: string;
@@ -222,6 +297,7 @@ describe("GarmentScreen 옷 정보 확인", () => {
         expect(screen.getByAltText("등록한 기준 옷 사진")).toBeInTheDocument();
       });
 
+      await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
       await userEvent.click(screen.getByRole("button", { name: "검정" }));
       await userEvent.click(screen.getByRole("button", { name: chipLabel }));
       await userEvent.click(screen.getByRole("button", { name: "옷 정보 저장" }));
@@ -234,6 +310,7 @@ describe("GarmentScreen 옷 정보 확인", () => {
         values: expectedValues,
         rawText: null,
       });
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     },
   );
 
@@ -252,6 +329,7 @@ describe("GarmentScreen 옷 정보 확인", () => {
 
     renderScreen();
 
+    await userEvent.click(await screen.findByRole("button", { name: "옷 정보 확인 (선택)" }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "네이비" })).toHaveAttribute(
         "aria-pressed",
@@ -283,11 +361,14 @@ describe("GarmentScreen 옷 정보 확인", () => {
 
     renderScreen();
 
+    await userEvent.click(await screen.findByRole("button", { name: "옷 정보 확인 (선택)" }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "5포켓형(청바지형)" })).toBeInTheDocument();
     });
 
+    await userEvent.click(screen.getByRole("button", { name: "닫기" }));
     await userEvent.click(screen.getByRole("button", { name: "치마" }));
+    await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
 
     // 바지 전용 축은 사라지고 치마 축이 보인다
     expect(screen.queryByRole("button", { name: "5포켓형(청바지형)" })).not.toBeInTheDocument();
@@ -314,11 +395,17 @@ describe("GarmentScreen 옷 정보 확인", () => {
 
     renderScreen();
 
+    await userEvent.click(await screen.findByRole("button", { name: "옷 정보 확인 (선택)" }));
     await waitFor(() => {
       expect(
         screen.getByText("사진이나 옷 종류가 바뀌었어요. 정보를 확인하고 다시 저장해 주세요."),
       ).toBeInTheDocument();
     });
+    // Confirming unchanged values must still be possible, or the notice can never be cleared.
+    const save = screen.getByRole("button", { name: "옷 정보 저장" });
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+    await waitFor(() => expect(apiMocks.putGarmentAttributes).toHaveBeenCalledTimes(1));
   });
 
   it("저장 실패(네트워크)에도 선택값과 글을 지우지 않는다", async () => {
@@ -334,6 +421,7 @@ describe("GarmentScreen 옷 정보 확인", () => {
       expect(screen.getByAltText("등록한 기준 옷 사진")).toBeInTheDocument();
     });
 
+    await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
     await userEvent.click(screen.getByRole("button", { name: "검정" }));
     await userEvent.type(screen.getByLabelText(/직접 적기/), "라벨 정보");
     await userEvent.click(screen.getByRole("button", { name: "옷 정보 저장" }));
@@ -343,6 +431,7 @@ describe("GarmentScreen 옷 정보 확인", () => {
     });
     expect(screen.getByRole("button", { name: "검정" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText(/직접 적기/)).toHaveValue("라벨 정보");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("401이어도 세션을 자동으로 초기화하지 않고 입력을 유지한다", async () => {
@@ -358,11 +447,12 @@ describe("GarmentScreen 옷 정보 확인", () => {
       expect(screen.getByAltText("등록한 기준 옷 사진")).toBeInTheDocument();
     });
 
+    await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
     await userEvent.click(screen.getByRole("button", { name: "검정" }));
     await userEvent.click(screen.getByRole("button", { name: "옷 정보 저장" }));
 
     await waitFor(() => {
-      expect(screen.getByText(/세션이 만료됐거나 복원하지 못했어요/)).toBeInTheDocument();
+      expect(screen.getAllByText(/세션이 만료됐거나 복원하지 못했어요/)[0]).toBeInTheDocument();
     });
     expect(apiMocks.resetSession).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "검정" })).toHaveAttribute("aria-pressed", "true");
@@ -383,6 +473,7 @@ describe("GarmentScreen 옷 정보 확인", () => {
     });
     expect(apiMocks.getGarment).toHaveBeenCalledTimes(1);
 
+    await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
     await userEvent.click(screen.getByRole("button", { name: "검정" }));
     await userEvent.click(screen.getByRole("button", { name: "옷 정보 저장" }));
 
@@ -405,6 +496,7 @@ describe("GarmentScreen 옷 정보 확인", () => {
       expect(screen.getByAltText("등록한 기준 옷 사진")).toBeInTheDocument();
     });
 
+    await userEvent.click(screen.getByRole("button", { name: "옷 정보 확인 (선택)" }));
     const chip = screen.getByRole("button", { name: "검정" });
     await userEvent.click(chip);
     expect(chip).toHaveAttribute("aria-pressed", "true");

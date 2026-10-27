@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 
 interface GarmentFormProps {
+  section?: "type" | "additional";
   garmentType: GarmentType | null;
   brand: string;
   productName: string;
@@ -42,6 +43,7 @@ const inputClass =
   "mt-2 h-11 rounded-xl border-transparent bg-secondary px-4 text-foreground placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring";
 
 export function GarmentForm({
+  section,
   garmentType,
   brand,
   productName,
@@ -55,113 +57,117 @@ export function GarmentForm({
 }: GarmentFormProps) {
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <div id="garment-type-label">
-          <StepLabel step="01" title="종류" />
+      {section !== "additional" && (
+        <div>
+          <div id="garment-type-label">
+            <StepLabel step="01" title="종류" />
+          </div>
+          <div
+            role="group"
+            aria-labelledby="garment-type-label"
+            className="mt-3 grid grid-cols-2 gap-2"
+          >
+            {TYPE_OPTIONS.map((option) => {
+              const selected = garmentType === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={disabled}
+                  onClick={() => onGarmentType(option.value)}
+                  className={cn(
+                    "tap-feedback h-12 rounded-full text-sm font-bold",
+                    selected
+                      ? "bg-primary text-primary-foreground shadow-[0_8px_24px_-6px_color-mix(in_oklab,var(--color-primary)_60%,transparent)]"
+                      : "bg-secondary text-secondary-foreground ring-1 ring-border hover:bg-accent",
+                    disabled && "opacity-60",
+                  )}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          {fieldErrors.garmentType && (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {fieldErrors.garmentType}
+            </p>
+          )}
         </div>
-        <div
-          role="group"
-          aria-labelledby="garment-type-label"
-          className="mt-3 grid grid-cols-2 gap-2"
-        >
-          {TYPE_OPTIONS.map((option) => {
-            const selected = garmentType === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
+      )}
+
+      {section !== "type" && (
+        <div>
+          <StepLabel step="02" title="추가 정보" optional />
+          <div className="mt-4 flex flex-col gap-5">
+            <div>
+              <label htmlFor="garment-brand" className="text-sm text-muted-foreground">
+                브랜드
+              </label>
+              <Input
+                id="garment-brand"
+                value={brand}
+                maxLength={BRAND_MAX}
                 disabled={disabled}
-                onClick={() => onGarmentType(option.value)}
-                className={cn(
-                  "tap-feedback h-12 rounded-full text-sm font-bold",
-                  selected
-                    ? "bg-primary text-primary-foreground shadow-[0_8px_24px_-6px_color-mix(in_oklab,var(--color-primary)_60%,transparent)]"
-                    : "bg-secondary text-secondary-foreground ring-1 ring-border hover:bg-accent",
-                  disabled && "opacity-60",
-                )}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-        {fieldErrors.garmentType && (
-          <p role="alert" className="mt-2 text-sm text-destructive">
-            {fieldErrors.garmentType}
-          </p>
-        )}
-      </div>
+                onChange={(e) => onBrand(e.target.value)}
+                placeholder="예: 브랜드 이름"
+                className={inputClass}
+                aria-invalid={Boolean(fieldErrors.brand)}
+              />
+              {fieldErrors.brand && (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {fieldErrors.brand}
+                </p>
+              )}
+            </div>
 
-      <div className="border-t border-border pt-7">
-        <StepLabel step="02" title="추가 정보" optional />
-        <div className="mt-4 flex flex-col gap-5">
-          <div>
-            <label htmlFor="garment-brand" className="text-sm text-muted-foreground">
-              브랜드
-            </label>
-            <Input
-              id="garment-brand"
-              value={brand}
-              maxLength={BRAND_MAX}
-              disabled={disabled}
-              onChange={(e) => onBrand(e.target.value)}
-              placeholder="예: 브랜드 이름"
-              className={inputClass}
-              aria-invalid={Boolean(fieldErrors.brand)}
-            />
-            {fieldErrors.brand && (
-              <p role="alert" className="mt-2 text-sm text-destructive">
-                {fieldErrors.brand}
-              </p>
-            )}
-          </div>
+            <div>
+              <label htmlFor="garment-product-name" className="text-sm text-muted-foreground">
+                제품명
+              </label>
+              <Input
+                id="garment-product-name"
+                value={productName}
+                maxLength={PRODUCT_NAME_MAX}
+                disabled={disabled}
+                onChange={(e) => onProductName(e.target.value)}
+                placeholder="예: 와이드 슬랙스"
+                className={inputClass}
+                aria-invalid={Boolean(fieldErrors.productName)}
+              />
+              {fieldErrors.productName && (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {fieldErrors.productName}
+                </p>
+              )}
+            </div>
 
-          <div>
-            <label htmlFor="garment-product-name" className="text-sm text-muted-foreground">
-              제품명
-            </label>
-            <Input
-              id="garment-product-name"
-              value={productName}
-              maxLength={PRODUCT_NAME_MAX}
-              disabled={disabled}
-              onChange={(e) => onProductName(e.target.value)}
-              placeholder="예: 와이드 슬랙스"
-              className={inputClass}
-              aria-invalid={Boolean(fieldErrors.productName)}
-            />
-            {fieldErrors.productName && (
-              <p role="alert" className="mt-2 text-sm text-destructive">
-                {fieldErrors.productName}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="garment-purchase-url" className="text-sm text-muted-foreground">
-              구매처 링크
-            </label>
-            <Input
-              id="garment-purchase-url"
-              type="url"
-              inputMode="url"
-              value={purchaseUrl}
-              maxLength={PURCHASE_URL_MAX}
-              disabled={disabled}
-              onChange={(e) => onPurchaseUrl(e.target.value)}
-              placeholder="https://"
-              className={inputClass}
-              aria-invalid={Boolean(fieldErrors.purchaseUrl)}
-            />
-            {fieldErrors.purchaseUrl && (
-              <p role="alert" className="mt-2 text-sm text-destructive">
-                {fieldErrors.purchaseUrl}
-              </p>
-            )}
+            <div>
+              <label htmlFor="garment-purchase-url" className="text-sm text-muted-foreground">
+                구매처 링크
+              </label>
+              <Input
+                id="garment-purchase-url"
+                type="url"
+                inputMode="url"
+                value={purchaseUrl}
+                maxLength={PURCHASE_URL_MAX}
+                disabled={disabled}
+                onChange={(e) => onPurchaseUrl(e.target.value)}
+                placeholder="https://"
+                className={inputClass}
+                aria-invalid={Boolean(fieldErrors.purchaseUrl)}
+              />
+              {fieldErrors.purchaseUrl && (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {fieldErrors.purchaseUrl}
+                </p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -61,10 +61,12 @@ describe("GarmentScreen", () => {
 
     renderScreen();
 
+    await userEvent.click(await screen.findByRole("button", { name: "추가 정보 입력 (선택)" }));
     await waitFor(() => {
       expect(screen.getByLabelText(/브랜드/)).toHaveValue("브랜드");
     });
     expect(screen.getByLabelText(/제품명/)).toHaveValue("와이드 슬랙스");
+    await userEvent.click(screen.getByRole("button", { name: "적용" }));
     expect(screen.getByRole("button", { name: "바지" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByAltText("등록한 기준 옷 사진")).toHaveAttribute(
       "src",
@@ -143,6 +145,7 @@ describe("GarmentScreen", () => {
 
     renderScreen();
 
+    await userEvent.click(await screen.findByRole("button", { name: "추가 정보 입력 (선택)" }));
     await waitFor(() => {
       expect(screen.getByLabelText(/브랜드/)).toHaveValue("브랜드");
     });
@@ -152,6 +155,7 @@ describe("GarmentScreen", () => {
     await userEvent.clear(brandInput);
     await userEvent.type(brandInput, "새 브랜드");
 
+    await userEvent.click(screen.getByRole("button", { name: "적용" }));
     const saveButton = screen.getByRole("button", { name: "저장하기" });
     expect(saveButton).toBeEnabled();
     await userEvent.click(saveButton);
@@ -159,8 +163,10 @@ describe("GarmentScreen", () => {
     await waitFor(() => {
       expect(screen.getByText(/저장에 실패했어요/)).toBeInTheDocument();
     });
+    await userEvent.click(screen.getByRole("button", { name: "추가 정보 입력 (선택)" }));
     // 입력이 보존되고 재시도 버튼이 보인다
     expect(screen.getByLabelText(/브랜드/)).toHaveValue("새 브랜드");
+    await userEvent.click(screen.getByRole("button", { name: "적용" }));
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
     // 일반 재시도에서 세션 삭제는 호출되지 않는다
     expect(apiMocks.resetSession).not.toHaveBeenCalled();

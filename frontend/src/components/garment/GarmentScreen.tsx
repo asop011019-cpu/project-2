@@ -41,6 +41,8 @@ import {
 import { GarmentPhoto } from "./GarmentPhoto";
 import { GarmentForm } from "./GarmentForm";
 import { GarmentAttributes } from "./GarmentAttributes";
+import { GarmentSheet } from "./GarmentSheet";
+import { ChevronRight } from "lucide-react";
 
 const RESTORE_QUERY_KEY = ["onboarding", "garment"] as const;
 
@@ -128,6 +130,8 @@ export function GarmentScreen({
   const [attrNotice, setAttrNotice] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [additionalOpen, setAdditionalOpen] = useState(false);
+  const [attributesOpen, setAttributesOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   /** 서버 저장 사진 로드 실패(404·연결 실패) 여부 */
@@ -220,7 +224,15 @@ export function GarmentScreen({
     }
   }, [restoreQuery.error]);
 
+  useEffect(() => {
+    if (fieldErrors.brand || fieldErrors.productName || fieldErrors.purchaseUrl) {
+      setAdditionalOpen(true);
+    }
+  }, [fieldErrors]);
+
   const clearAll = () => {
+    setAdditionalOpen(false);
+    setAttributesOpen(false);
     setSaved(null);
     setLocalFile(null);
     setPreview(null);
@@ -323,15 +335,19 @@ export function GarmentScreen({
       setAttrError(null);
       setAttrNotice(null);
       toast.success("저장했어요");
+      setAttributesOpen(false);
     },
     onError: async (e) => {
       // 입력한 선택값과 글은 어떤 실패에도 지우지 않는다
       if (
         e instanceof ApiError &&
         (e.code === "AUTH_REQUIRED" || e.code === "CONSENT_UPDATE_REQUIRED")
-      )
+      ) {
+        setAttrError("로그인 또는 동의 확인이 필요해요. 입력한 내용은 그대로 남아 있어요.");
         return;
+      }
       if (e instanceof ApiError && e.status === 401) {
+        setAttrError("세션이 만료됐거나 복원하지 못했어요. 입력한 내용은 그대로 남아 있습니다.");
         setSessionExpired(true);
         return;
       }
@@ -462,8 +478,34 @@ export function GarmentScreen({
     ? JSON.stringify(buildAttributesBody(garmentType, attrValues, rawText))
     : null;
   const attrDirty = savedAttrBody !== currentAttrBody;
+  // After a new photo or type the server asks for confirmation; saving unchanged values confirms them.
+  const confirmPending =
+    saved?.attributes?.needsConfirmation === true && garmentType === saved.garmentType;
   const canSaveAttributes =
-    saved !== null && garmentType !== null && attrDirty && !formDisabled && !reading;
+    saved !== null &&
+    garmentType !== null &&
+    (attrDirty || confirmPending) &&
+    !formDisabled &&
+    !reading;
+
+  const additionalHasError = Boolean(
+    fieldErrors.brand || fieldErrors.productName || fieldErrors.purchaseUrl,
+  );
+  const additionalSummary = [
+    [brand, "브랜드"],
+    [productName, "제품명"],
+    [purchaseUrl, "구매처 링크"],
+  ]
+    .filter(([value]) => value?.trim())
+    .map(([, label]) => label)
+    .join("·");
+  const additionalDirty =
+    normalizeOptional(brand) !== (saved?.brand ?? null) ||
+    normalizeOptional(productName) !== (saved?.productName ?? null) ||
+    normalizeOptional(purchaseUrl) !== (saved?.purchaseUrl ?? null);
+  const selectedCount = Object.values(attrValues).filter((value) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value),
+  ).length;
 
   const handleAttributesSave = () => {
     if (!canSaveAttributes || garmentType === null) return;
@@ -597,6 +639,7 @@ export function GarmentScreen({
 
           <section className="animate-rise-late lg:order-1 lg:col-span-5" aria-label="옷 정보">
             <GarmentForm
+              section="type"
               garmentType={garmentType}
               brand={brand}
               productName={productName}
@@ -622,17 +665,118 @@ export function GarmentScreen({
                 setPurchaseUrl(v);
               }}
             />
-
+            <div className="mt-6 flex flex-col border-t border-border">
+              <Button
+                variant="ghost"
+                aria-label="추가 정보 입력 (선택)"
+                className="h-auto justify-between whitespace-normal rounded-none border-b border-border px-0 py-4 text-left"
+                onClick={() => setAdditionalOpen(true)}
+              >
+                <span className="min-w-0">
+                  <span className="block font-bold">추가 정보 입력 (선택)</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {additionalSummary ? `${additionalSummary} 입력됨` : "아직 입력하지 않음"}
+                  </span>
+                  {additionalDirty && (
+                    <span className="mt-1 block text-xs text-primary">저장 안 된 변경 있음</span>
+                  )}
+                  {additionalHasError && (
+                    <span className="mt-1 block text-xs text-destructive">
+                      입력한 정보를 확인해 주세요
+                    </span>
+                  )}
+                </span>
+                <ChevronRight className="shrink-0" />
+              </Button>
+              {saved !== null && garmentType !== null && (
+                <Button
+                  variant="ghost"
+                  aria-label="옷 정보 확인 (선택)"
+                  className="h-auto justify-between whitespace-normal rounded-none border-b border-border px-0 py-4 text-left"
+                  onClick={() => setAttributesOpen(true)}
+                >
+                  <span className="min-w-0">
+                    <span className="block font-bold">옷 정보 확인 (선택)</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {selectedCount ? `${selectedCount}개 항목 선택` : "아직 고르지 않음"}
+                      {rawText.trim() ? " · 직접 적기 입력됨" : ""}
+                    </span>
+                    {saved.attributes?.needsConfirmation && (
+                      <span className="mt-1 block text-xs text-primary">다시 확인 필요</span>
+                    )}
+                    {attrDirty && (
+                      <span className="mt-1 block text-xs text-primary">저장 안 된 변경 있음</span>
+                    )}
+                  </span>
+                  <ChevronRight className="shrink-0" />
+                </Button>
+              )}
+            </div>
+            <GarmentSheet
+              open={additionalOpen}
+              onOpenChange={setAdditionalOpen}
+              title="추가 정보 입력 (선택)"
+              footer={
+                <Button
+                  className="h-11 w-full rounded-full"
+                  onClick={() => setAdditionalOpen(false)}
+                >
+                  적용
+                </Button>
+              }
+            >
+              <GarmentForm
+                section="additional"
+                garmentType={garmentType}
+                brand={brand}
+                productName={productName}
+                purchaseUrl={purchaseUrl}
+                fieldErrors={fieldErrors}
+                disabled={formDisabled}
+                onGarmentType={(v) => {
+                  touch();
+                  setGarmentType(v);
+                  // 이전 종류 전용 선택은 지우고 공통(색·소재감)만 남긴다
+                  setAttrValues((prev) => pruneForType(prev));
+                }}
+                onBrand={(v) => {
+                  touch();
+                  setBrand(v);
+                }}
+                onProductName={(v) => {
+                  touch();
+                  setProductName(v);
+                }}
+                onPurchaseUrl={(v) => {
+                  touch();
+                  setPurchaseUrl(v);
+                }}
+              />
+            </GarmentSheet>
             {saved !== null && garmentType !== null && (
-              <div className="mt-8">
+              <GarmentSheet
+                open={attributesOpen}
+                onOpenChange={setAttributesOpen}
+                title="옷 정보 확인 (선택)"
+                footer={
+                  <Button
+                    className="h-11 w-full rounded-full"
+                    disabled={!canSaveAttributes || attributesMutation.isPending}
+                    onClick={handleAttributesSave}
+                  >
+                    {attributesMutation.isPending ? "저장 중…" : "옷 정보 저장"}
+                  </Button>
+                }
+              >
                 <GarmentAttributes
+                  hideSave
                   garmentType={garmentType}
                   values={attrValues}
                   rawText={rawText}
                   needsConfirmation={saved.attributes?.needsConfirmation === true}
                   notice={attrNotice}
                   error={attrError}
-                  disabled={formDisabled}
+                  disabled={formDisabled || attributesMutation.isPending}
                   saving={attributesMutation.isPending}
                   canSave={canSaveAttributes && !attributesMutation.isPending}
                   onToggle={handleAttrToggle}
@@ -643,7 +787,7 @@ export function GarmentScreen({
                   }}
                   onSave={handleAttributesSave}
                 />
-              </div>
+              </GarmentSheet>
             )}
 
             {actionError && (
@@ -683,8 +827,7 @@ export function GarmentScreen({
               </div>
             )}
 
-            {/* The section's entrance animation keeps a transform, which pins this "fixed" bar to
-                the section's bottom on mobile; leave room so it never covers the last controls. */}
+            {/* The section's entrance animation keeps a transform, which pins this "fixed" bar to the section's bottom on mobile; leave room so it never covers the last controls. */}
             <div aria-hidden="true" className="h-24 lg:hidden" />
             <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/90 px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:static lg:mt-9 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
               <Button
