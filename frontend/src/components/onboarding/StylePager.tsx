@@ -66,6 +66,8 @@ export function StylePager({
         ? ""
         : `perspective(1100px) rotateY(${(-Math.max(-1, Math.min(1, d)) * 26).toFixed(2)}deg) scale(${(1 - near * 0.14).toFixed(3)})`;
       card.style.opacity = flat ? "" : (1 - near * 0.4).toFixed(3);
+      // Neighbours shrink toward the middle card, so their near edge stays in view.
+      card.style.transformOrigin = flat ? "" : d > 0 ? "left center" : d < 0 ? "right center" : "";
     }
   }, []);
 
