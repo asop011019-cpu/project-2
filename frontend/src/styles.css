@@ -1268,6 +1268,7 @@ a:focus-visible {
 /* Outfit showcase (after the twoclipping reference): native horizontal swipe with snap, so a
    vertical drag still scrolls the page; the current card comes forward, the others step back. */
 .showcase-track {
+  position: relative; /* offsetLeft/offsetTop of the cards are measured from here */
   display: flex;
   gap: 12px;
   overflow-x: auto;
@@ -1389,6 +1390,7 @@ a:focus-visible {
    that snap one at a time sideways. The middle card faces forward; neighbours turn slightly away
    and shrink (set per frame from the scroll position in StylePager). */
 .style-pager {
+  position: relative; /* offsetLeft/offsetTop of the cards are measured from here */
   --card-h: min(440px, 50svh);
   height: calc(var(--card-h) + 58px);
   margin-top: 12px;
@@ -1430,6 +1432,7 @@ a:focus-visible {
   color: var(--muted-foreground);
 }
 .style-track {
+  position: relative; /* offsetLeft/offsetTop of the cards are measured from here */
   display: flex;
   gap: 10px;
   overflow-x: auto;
