@@ -310,7 +310,7 @@ test("migration v8 keeps an existing pants garment and adds no attributes", asyn
     `INSERT INTO onboarding_sessions(id,token_hash,started_at,updated_at,expires_at) VALUES('s1','${"a".repeat(64)}','2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z','2026-12-01T00:00:00.000Z');
      INSERT INTO garments VALUES('s1','g1','pants','브랜드',NULL,NULL,'f.png',8,12,'2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z');`,
   );
-  migrate(db);
+  migrate(db, 8);
   assert.equal(db.prepare("PRAGMA user_version").get()!["user_version"], 8);
   assert.deepEqual(
     { ...db.prepare("SELECT * FROM garments").get() },

@@ -1,4 +1,5 @@
 import { registerGarmentRoutes } from "./modules/garment/routes.ts";
+import { registerConditionsRoutes } from "./modules/conditions/routes.ts";
 import Fastify, { LogController } from "fastify";
 import cookie from "@fastify/cookie";
 import { ZodError } from "zod";
@@ -174,6 +175,7 @@ export function buildApp(
   registerAuthRoutes(app, auth, config, guard);
   registerOnboardingRoutes(app, service, guard);
   registerGarmentRoutes(app, db, service, config, guard);
+  registerConditionsRoutes(app, db, service, guard);
   // A local image URL stays readable only while it belongs to currently public content.
   app.get("/media/*", async (request, reply) => {
     const reference = `/media/${(request.params as { "*": string })["*"]}`;

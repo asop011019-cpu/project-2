@@ -171,38 +171,38 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 
 기준 하의 등록·복원 계약: [GARMENT_API.md](GARMENT_API.md).
 
-## 추천 조건 (COND-001 계약안 — 검토 전, 미구현)
+## 추천 조건 (COND-001)
 
-계획·결정 사항·테스트는 [COND-001.md](COND-001.md). 아래 경로·필드는 총괄 승인 전 구현하지 않습니다.
+백엔드 구현 완료(스키마 v9). 화면·결정 근거·검증은 [COND-001.md](COND-001.md).
 
 ### 경로
 
 | 메서드 | 경로 | 요청 | 응답 |
 | --- | --- | --- | --- |
-| GET | `/session/conditions` | 없음 | 200 `{ "conditions": RecommendationConditions }`. 한 번도 저장하지 않았으면 네 항목 모두 null, `updatedAt: null` |
+| GET | `/session/conditions` | 없음 | 200 `{ "conditions": RecommendationConditions }`. 저장한 적 없거나 진행이 없으면 네 항목 모두 null, `updatedAt: null` |
 | PUT | `/session/conditions` | 네 항목을 모두 담은 최종값(부분 수정 없음) | 200, GET과 같은 모양 |
 
-다른 `/session*` 경로와 같이 로그인 쿠키로만 인증합니다(401 `AUTH_REQUIRED`·`SESSION_REQUIRED`, 403 `CONSENT_UPDATE_REQUIRED`, 변경 요청은 `X-Onboarding-Request: 1`). URL·본문에 세션·조건 ID를 넣지 않으며 기존 `SessionView`·`SessionSummary`·의류 응답은 바꾸지 않습니다.
+다른 `/session*` 경로처럼 로그인 쿠키로만 인증합니다(401 `AUTH_REQUIRED`, 진행이 없을 때 PUT은 401 `SESSION_REQUIRED`, 403 `CONSENT_UPDATE_REQUIRED`, 변경 요청은 `X-Onboarding-Request: 1`). URL·본문에 세션·조건 ID를 넣지 않으며 기존 `SessionView`·`SessionSummary`·의류 응답은 바뀌지 않았습니다.
 
 ### 필드 — 미입력(null)과 상관없음("any")은 다른 값
 
 | 필드 | 미입력 | 상관없음 | 선택값 |
 | --- | --- | --- | --- |
-| `seasons` | `null` | `"any"` | 중복 없는 1개 이상 배열: `spring`·`summer`·`autumn`·`winter` |
-| `occasions` | `null` | `"any"` | 중복 없는 1개 이상 배열: `daily`·`work_school`·`date_gathering`·`formal_event`·`outdoor` |
+| `temperatureC` | `null` | `"any"` | `{ "min": 정수, "max": 정수 }`, -20 ≤ min ≤ max ≤ 40 (섭씨, 같은 값 가능) |
+| `occasions` | `null` | `"any"` | 1개 배열: `daily`(일상)·`work_school`(출근·등교)·`date_gathering`(데이트·모임)·`formal_event`(격식 행사)·`outdoor`(야외활동). 배열이라 나중에 복수로 넓혀도 호환 |
 | `formality` | `null` | `"any"` | 정수 0(편안함)~100(격식) |
-| `additionalBudgetKrw` | `null` | `"any"`(상한 없음) | 원화 정수, 범위는 결정 대기(권고 10000~5000000) |
+| `additionalBudgetKrw` | `null` | `"any"`(상한 없음) | 원화 정수 10,000~5,000,000 |
 | `updatedAt` | 응답 전용. 저장 행이 없으면 null | | |
 
-- 빈 배열·`["any"]`·`"any"`와 값 섞기는 400. 배열은 서버가 위 순서로 정렬해 돌려줍니다.
+- 빈 배열·`["any"]`·2개 이상·중복·`"any"`와 값 섞기는 400.
 - 상황은 의류 범주(남성복·여성복)와 무관하게 모두 선택 가능합니다.
-- `additionalBudgetKrw`는 기준 옷 가격을 뺀 **추가 구매 품목 참고가 합계**의 상한입니다. 실제 판매가·재고를 보장하지 않으며, 결과 화면(M4)도 "참고가 기준" 표시를 전제로 합니다.
-- 문자열 숫자(`"50000"`), 소수, 음수, 범위 밖, 알 수 없는 키는 400.
+- `additionalBudgetKrw`는 기준 옷 가격을 뺀 **추가 구매 품목 참고가 합계**의 상한입니다. 실제 판매가·재고를 보장하지 않으며 결과 화면(M4)도 "참고가 기준" 표시를 전제로 합니다.
+- 문자열 숫자(`"50000"`), 소수, 음수, 범위 밖, 키 누락, 알 수 없는 키(예: `seasons`)는 400.
 - 네 항목이 모두 null인 PUT은 저장 행을 지웁니다(=처음 상태). 같은 값의 재저장은 `updatedAt`을 바꾸지 않습니다.
 
 ```json
 {
-  "seasons": ["spring", "autumn"],
+  "temperatureC": { "min": 8, "max": 20 },
   "occasions": ["work_school"],
   "formality": null,
   "additionalBudgetKrw": "any"
@@ -213,7 +213,7 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 
 | HTTP | code | 예 |
 | --- | --- | --- |
-| 400 | INVALID_INPUT | `issues[].path`: `seasons.1`, `formality`, `additionalBudgetKrw` |
+| 400 | INVALID_INPUT | `issues[].path`: `temperatureC.min`, `occasions`, `formality`, `additionalBudgetKrw` |
 | 401 | AUTH_REQUIRED / SESSION_REQUIRED | 입력값 유지, 자동 초기화 금지 |
 | 403 | CONSENT_UPDATE_REQUIRED / REQUEST_HEADER_REQUIRED / ORIGIN_NOT_ALLOWED | 기존과 동일 |
 | 413 / 415 | PAYLOAD_TOO_LARGE / UNSUPPORTED_MEDIA_TYPE | 16 KiB JSON |
@@ -223,4 +223,4 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 
 - 조건은 계정의 취향 진행(`onboarding_sessions`)에 1개. `DELETE /session`, `POST /session/reset`, 탈퇴 삭제(유예 30일 후 실행) 때 함께 삭제. 유예 중 복구하면 그대로 남음.
 - 의류 범주 전환, 기준 옷 사진 교체·종류 변경·삭제는 조건을 바꾸지 않습니다.
-- 추천(M4)은 요청 시점에 현재 범주의 `SessionSummary` + 기준 옷과 확인 속성 + 이 조건을 읽어 조합합니다. 조건에 취향·옷 정보를 복사하지 않습니다.
+- 추천(M4)은 요청 시점에 현재 범주의 `SessionSummary` + 기준 옷과 확인 속성 + 이 조건을 읽어 조합합니다. 조건에 취향·옷 정보를 복사하지 않습니다. 미입력 항목은 추천을 막지 않고 "조건 없음"으로 처리합니다.

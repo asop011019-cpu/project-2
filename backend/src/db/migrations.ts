@@ -146,6 +146,12 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
      vocabulary_version TEXT NOT NULL, values_json TEXT NOT NULL, raw_text TEXT,
      confirmed_image TEXT NOT NULL, updated_at TEXT NOT NULL
    ) STRICT;`,
+  // v9 (COND-001): the conditions a recommendation should fit, one row per onboarding progress.
+  // No row means nothing answered yet; deleting or resetting the progress removes it.
+  `CREATE TABLE recommendation_conditions (
+     session_id TEXT PRIMARY KEY REFERENCES onboarding_sessions(id) ON DELETE CASCADE,
+     vocabulary_version TEXT NOT NULL, values_json TEXT NOT NULL, updated_at TEXT NOT NULL
+   ) STRICT;`,
 ];
 
 /** Applies pending migrations; `target` (tests only) stops at an older schema version. */
