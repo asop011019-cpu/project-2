@@ -1392,7 +1392,7 @@ a:focus-visible {
 .style-pager {
   position: relative; /* offsetLeft/offsetTop of the cards are measured from here */
   --card-h: min(440px, 50svh);
-  --card-w: min(72vw, 330px);
+  --card-w: min(66vw, 320px);
   height: calc(var(--card-h) + 58px);
   margin-top: 12px;
   overflow-y: auto;
