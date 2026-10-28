@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import { unlinkSync } from "node:fs";
 import path from "node:path";
 import { garmentFiles } from "../garment/files.ts";
 import type { AttributeValues, GarmentType } from "../garment/attributes.ts";
@@ -60,12 +59,6 @@ export class WardrobeStore {
         `SELECT ${COLUMNS} FROM wardrobe_items i WHERE i.id=? AND i.user_id=?`,
       )
       .get(id, userId) as ItemRow | undefined;
-  }
-  /** True when the id is taken by any account (used to refuse another account's id). */
-  exists(id: string): boolean {
-    return Boolean(
-      this.db.prepare("SELECT 1 FROM wardrobe_items WHERE id=?").get(id),
-    );
   }
   items(userId: string): ItemRow[] {
     return this.db
@@ -139,9 +132,5 @@ export class WardrobeStore {
         undo(this.files.remove(row.filename, { missingOk: true }));
       this.db.prepare("DELETE FROM wardrobe_items WHERE user_id=?").run(userId);
     });
-  }
-  /** Removes a photo written during a request that then failed. */
-  discard(filename: string): void {
-    unlinkSync(path.join(this.root, filename));
   }
 }

@@ -295,31 +295,33 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
     mutation.mutate(toValues(values));
   };
 
-  /** 사용자가 고른 예산. 0원이 처음이면 알림부터, 다른 금액이면 다음 0원 때 다시 알린다. */
-  const setBudget = (next: ConditionValues["additionalBudgetKrw"]) => {
+  /**
+   * 사용자가 바꾼 예산. 0원을 벗어나면 다음 0원 때 다시 알리고, `prompt`면 처음 0원에서 알림부터.
+   * 예산 변경은 모두 여기를 거친다(0원 확인 표시를 지우는 곳은 여기 하나).
+   */
+  const setBudget = (next: ConditionValues["additionalBudgetKrw"], prompt = true) => {
     if (next !== 0) zeroAck.current = false;
     update({ additionalBudgetKrw: next });
-    if (next === 0 && !zeroAck.current) setZeroPrompt({ thenSave: false });
+    if (prompt && next === 0 && !zeroAck.current) setZeroPrompt({ thenSave: false });
   };
+  // 알림창이 뜰 때 값은 이미 0원이다(칩·입력·저장 모두).
   const confirmZero = () => {
     zeroAck.current = true;
     const thenSave = zeroPrompt?.thenSave;
     setZeroPrompt(null);
     setBudgetCustom(false);
     setBudgetText("");
-    update({ additionalBudgetKrw: 0 });
     if (thenSave) {
       setSaveError(null);
-      mutation.mutate(toValues({ ...values, additionalBudgetKrw: 0 }));
+      mutation.mutate(toValues(values));
     }
   };
   /** 금액 변경: 0원을 풀고 직접 입력란으로 보낸다. */
   const changeBudget = () => {
     setZeroPrompt(null);
-    zeroAck.current = false;
     setBudgetCustom(true);
     setBudgetText("");
-    update({ additionalBudgetKrw: null });
+    setBudget(null);
     window.setTimeout(() => budgetInput.current?.focus(), 0);
   };
 
@@ -363,7 +365,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
           ? "0원, 내 옷장 옷만"
           : formatKrw(b);
   // 저장된 값이 0원일 때만 서버에 옷장 상태를 묻는다(입력 중인 값으로는 묻지 않음).
-  const savedOwnedOnly = query.data?.additionalBudgetKrw === 0 && b === 0;
+  const savedOwnedOnly = query.data?.additionalBudgetKrw === 0 && !dirty;
 
   const occ = values.occasions;
   const occStatus =
@@ -615,11 +617,11 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                     if (budgetCustom) {
                       setBudgetCustom(false);
                       setBudgetText("");
-                      update({ additionalBudgetKrw: null });
+                      setBudget(null);
                     } else {
                       setBudgetCustom(true);
                       setBudgetText("");
-                      update({ additionalBudgetKrw: null });
+                      setBudget(null);
                     }
                   }}
                 >
@@ -651,15 +653,12 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                       placeholder="150,000"
                       onChange={(e) => {
                         const text = formatBudgetInput(e.target.value);
-                        const next = parseBudgetInput(text);
                         setBudgetText(text);
                         // 글자마다 알리지 않는다: 0원 알림은 입력란을 벗어날 때.
-                        if (next !== 0) zeroAck.current = false;
-                        update({ additionalBudgetKrw: next });
+                        setBudget(parseBudgetInput(text), false);
                       }}
                       onBlur={() => {
-                        if (parseBudgetInput(budgetText) === 0 && !zeroAck.current)
-                          setZeroPrompt({ thenSave: false });
+                        if (b === 0 && !zeroAck.current) setZeroPrompt({ thenSave: false });
                       }}
                       className="h-12 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none"
                     />
@@ -673,7 +672,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                   onClick={() => {
                     setBudgetCustom(false);
                     setBudgetText("");
-                    update({ additionalBudgetKrw: null });
+                    setBudget(null);
                   }}
                 />
               )}
@@ -682,7 +681,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                   ? "추가로 살 옷 없이 내 옷장에 등록한 옷만 써요."
                   : "갖고 있는 기준 옷 가격은 빼고, 더 살 옷의 참고가 합계예요. 실제 판매가·재고와 다를 수 있어요."}
               </p>
-              {savedOwnedOnly && !dirty && (
+              {savedOwnedOnly && (
                 <OwnedOnlyNotice
                   onRegister={() => navigate("/garment")}
                   onChangeBudget={changeBudget}

@@ -14,6 +14,14 @@ import {
 
 type Row = { valuesJson: string; updatedAt: string };
 
+/** The saved conditions of one onboarding progress, if any (WARD-001 reads the budget too). */
+export const conditionsRow = (db: DatabaseSync, sessionId: string) =>
+  db
+    .prepare(
+      "SELECT values_json AS valuesJson,updated_at AS updatedAt FROM recommendation_conditions WHERE session_id=?",
+    )
+    .get(sessionId) as Row | undefined;
+
 export function registerConditionsRoutes(
   app: FastifyInstance,
   db: DatabaseSync,
@@ -21,12 +29,7 @@ export function registerConditionsRoutes(
   guard: AuthGuard,
 ) {
   const url = "/api/onboarding/session/conditions";
-  const get = (id: string) =>
-    db
-      .prepare(
-        "SELECT values_json AS valuesJson,updated_at AS updatedAt FROM recommendation_conditions WHERE session_id=?",
-      )
-      .get(id) as Row | undefined;
+  const get = (id: string) => conditionsRow(db, id);
   const view = (row: Row | undefined) => ({
     conditions: row
       ? {

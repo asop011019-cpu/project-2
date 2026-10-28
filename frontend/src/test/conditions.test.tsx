@@ -332,6 +332,19 @@ describe("코디 조건 안내", { timeout: 15_000 }, () => {
       expect(await screen.findByText("내 옷장 옷 3벌로만 코디를 제안해요.")).toBeInTheDocument();
     });
 
+    it("선택을 지웠다가 다시 0원을 고르면 다시 알린다", async () => {
+      api.getConditions.mockResolvedValue(EMPTY);
+      renderScreen();
+      const budget = await screen.findByRole("region", { name: "추가 구매 예산" });
+      await userEvent.click(within(budget).getByRole("button", { name: "0원" }));
+      await userEvent.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "계속" }),
+      );
+      await userEvent.click(within(budget).getByRole("button", { name: "선택 지우기" }));
+      await userEvent.click(within(budget).getByRole("button", { name: "0원" }));
+      expect(await screen.findByRole("alertdialog")).toHaveTextContent(NOTICE);
+    });
+
     it("[금액 변경]은 0원을 풀고 직접 입력으로 보낸다", async () => {
       api.getConditions.mockResolvedValue(EMPTY);
       renderScreen();

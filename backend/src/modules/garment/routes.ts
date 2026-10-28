@@ -7,6 +7,7 @@ import {
   closeSync,
   mkdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -195,7 +196,8 @@ export function registerGarmentRoutes(
       const old = data.itemId
         ? store.item(owner, data.itemId)
         : reference(owner);
-      if (data.itemId && !old && store.exists(data.itemId)) throw notFound();
+      // Another account's id is never looked up here: it reads like an unknown id, and the
+      // upsert below refuses to touch it.
       if (!old && !normalized) throw invalid("image");
       // A first photo starts the account's onboarding progress if none exists yet.
       const sessionId =
@@ -209,57 +211,50 @@ export function registerGarmentRoutes(
         ),
       ).toISOString();
       const filename = normalized ? randomUUID() + ".png" : old!.filename;
-      let written = false;
-      try {
-        store.transaction((undo) => {
-          if (normalized) {
-            mkdirSync(root, { recursive: true, mode: 0o700 });
-            const fd = openSync(path.join(root, filename), "wx", 0o600);
-            written = true;
-            try {
-              writeFileSync(fd, normalized.data);
-            } finally {
-              closeSync(fd);
-            }
+      store.transaction((undo) => {
+        if (normalized) {
+          const file = path.join(root, filename);
+          mkdirSync(root, { recursive: true, mode: 0o700 });
+          const fd = openSync(file, "wx", 0o600);
+          undo(() => unlinkSync(file));
+          try {
+            writeFileSync(fd, normalized.data);
+          } finally {
+            closeSync(fd);
           }
-          // The WHERE keeps another account's item untouched; no row changed means it was not ours.
-          const saved = db
-            .prepare(
-              `INSERT INTO wardrobe_items VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET garment_type=excluded.garment_type,brand=excluded.brand,product_name=excluded.product_name,purchase_url=excluded.purchase_url,filename=excluded.filename,width=excluded.width,height=excluded.height,updated_at=excluded.updated_at WHERE user_id=excluded.user_id`,
-            )
-            .run(
-              id,
-              owner,
-              data.garmentType,
-              data.brand,
-              data.productName,
-              data.purchaseUrl,
-              filename,
-              normalized?.info.width ?? old!.width,
-              normalized?.info.height ?? old!.height,
-              old?.createdAt ?? now,
-              now,
-            );
-          if (saved.changes === 0) throw notFound();
-          // A new garment type keeps only the attributes every type shares (color, material look,
-          // the user's own words) so axes of the old type never mix into the new one.
-          const confirmed = old && store.attributes(id);
-          if (old && confirmed && old.garmentType !== data.garmentType)
-            db.prepare(
-              "UPDATE wardrobe_item_attributes SET values_json=? WHERE item_id=?",
-            ).run(
-              JSON.stringify(
-                keepCommonValues(JSON.parse(confirmed.valuesJson)),
-              ),
-              id,
-            );
-          store.setReference(sessionId, id);
-          if (normalized && old) undo(files.remove(old.filename));
-        });
-      } catch (e) {
-        if (written) store.discard(filename);
-        throw e;
-      }
+        }
+        // The WHERE keeps another account's item untouched; no row changed means it was not ours.
+        const saved = db
+          .prepare(
+            `INSERT INTO wardrobe_items VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET garment_type=excluded.garment_type,brand=excluded.brand,product_name=excluded.product_name,purchase_url=excluded.purchase_url,filename=excluded.filename,width=excluded.width,height=excluded.height,updated_at=excluded.updated_at WHERE user_id=excluded.user_id`,
+          )
+          .run(
+            id,
+            owner,
+            data.garmentType,
+            data.brand,
+            data.productName,
+            data.purchaseUrl,
+            filename,
+            normalized?.info.width ?? old!.width,
+            normalized?.info.height ?? old!.height,
+            old?.createdAt ?? now,
+            now,
+          );
+        if (saved.changes === 0) throw notFound();
+        // A new garment type keeps only the attributes every type shares (color, material look,
+        // the user's own words) so axes of the old type never mix into the new one.
+        const confirmed = old && store.attributes(id);
+        if (confirmed && old.garmentType !== data.garmentType)
+          db.prepare(
+            "UPDATE wardrobe_item_attributes SET values_json=? WHERE item_id=?",
+          ).run(
+            JSON.stringify(keepCommonValues(JSON.parse(confirmed.valuesJson))),
+            id,
+          );
+        store.setReference(sessionId, id);
+        if (normalized && old) undo(files.remove(old.filename));
+      });
       return { garment: view(owner) };
     });
     // Saves the attributes the user confirmed for the current photo and garment type.

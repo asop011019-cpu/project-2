@@ -6,6 +6,7 @@ import type { AuthGuard } from "../auth/routes.ts";
 import { DomainError } from "../onboarding/domain.ts";
 import { notFound } from "../garment/routes.ts";
 import type { Conditions } from "../conditions/conditions.ts";
+import { conditionsRow } from "../conditions/routes.ts";
 import type { WardrobeStore } from "./store.ts";
 import { budgetMode, ownedOnlyCheck } from "./policy.ts";
 
@@ -56,15 +57,9 @@ export function registerWardrobeRoutes(
   app.get("/api/onboarding/session/recommendation-check", (r, reply) => {
     const owner = user(r, reply);
     const sessionId = service.sessionIdForUser(owner);
-    const row = sessionId
-      ? (store.db
-          .prepare(
-            "SELECT values_json AS v FROM recommendation_conditions WHERE session_id=?",
-          )
-          .get(sessionId) as { v: string } | undefined)
-      : undefined;
+    const row = sessionId ? conditionsRow(store.db, sessionId) : undefined;
     const budget = row
-      ? ((JSON.parse(row.v) as Conditions).additionalBudgetKrw ?? null)
+      ? ((JSON.parse(row.valuesJson) as Conditions).additionalBudgetKrw ?? null)
       : null;
     const items = store.items(owner);
     const mode = budgetMode(budget);

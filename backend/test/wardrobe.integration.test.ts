@@ -215,10 +215,12 @@ test("another account's items are invisible and untouchable, even by id", async 
     await b.user.request("PUT", garment + "/reference", { itemId: id }),
     await b.put(meta("pants", { itemId: id }), fixturePng(9)),
     await b.put(meta("pants", { itemId: id })),
+    await b.put(meta("pants", { itemId: randomUUID() })),
   ];
+  // Without a photo another account's id answers exactly like an unknown id (400 image).
   assert.deepEqual(
     attempts.map((r) => r.statusCode),
-    [404, 404, 404, 404, 404],
+    [404, 404, 404, 404, 400, 400],
   );
   assert.deepEqual((await a.wardrobe()).items, before);
   assert.equal(await b.reference(), null);
