@@ -540,6 +540,26 @@ describe("ONB-003-R1 사진 선호", () => {
     const check = screen.getByRole("button", { name: "취향 확인하기" });
     expect(check.compareDocumentPosition(skip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+  it("지운 이전·다음 줄, 응답·장르 카운터, 요약 넘김이 되살아나지 않는다", async () => {
+    api.getSummary.mockResolvedValue({
+      session: session({ progress: { ...session().progress, canComplete: true } }),
+      likedStyles: [],
+      dislikedStyles: [],
+      skippedStyles: [],
+      unansweredStyleIds: [],
+      likedImages: [],
+      isExploringOnly: false,
+    });
+    setup();
+    await screen.findByRole("heading", { name: "스타일A" });
+    expect(screen.queryByRole("button", { name: /이전$|^다음/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/응답 \d+ ?\/ ?\d+/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^장르 \d+ \/ \d+$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("입고 싶은 가능성")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "취향 확인하기" }));
+    await screen.findByRole("button", { name: "취향 저장하고 사진 등록으로" });
+    expect(document.querySelector(".page-turn")).toBeNull();
+  });
   it("건너뛰기는 자동 추천 안내 후 응답 저장 없이 다음 단계로, 계속 고르기는 그대로", async () => {
     const onComplete = setup();
     await screen.findByRole("heading", { name: "스타일A" });

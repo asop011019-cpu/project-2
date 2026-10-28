@@ -60,7 +60,7 @@ export function LoginPage() {
   }, []);
   return (
     <AuthShell title="카카오로 시작하기">
-      <p className="text-muted-foreground mb-8">로그인하고 내 취향과 하의 기록을 이어가세요.</p>
+      <p className="text-muted-foreground mb-8">로그인하고 내 취향과 옷장을 이어가세요.</p>
       <ErrorNotice error={error} />
       <Button className="kakao-button w-full" onClick={() => startKakao(returnTo)}>
         <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
@@ -379,8 +379,9 @@ export function AccountPage() {
                 <ul className="list-disc space-y-3 pl-5">
                   <li>탈퇴하면 바로 로그아웃되고 계정을 쓸 수 없어요.</li>
                   <li>
-                    취향 기록과 하의 사진·정보는 30일 동안 보관돼요. 그 안에 같은 카카오 계정으로
-                    다시 로그인하면 새로 가입하는 것이 아니라 기존 계정을 그대로 복구할 수 있어요.
+                    취향 기록과 내 옷장의 옷 사진·정보는 30일 동안 보관돼요. 그 안에 같은 카카오
+                    계정으로 다시 로그인하면 새로 가입하는 것이 아니라 기존 계정을 그대로 복구할 수
+                    있어요.
                   </li>
                   <li>
                     30일이 지나면 복구할 수 없어요. 보관한 정보는 순서대로 삭제되고, 삭제가 실패하면
