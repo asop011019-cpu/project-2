@@ -279,7 +279,7 @@ export function AccountPage() {
   const busy = out.isPending || remove.isPending || consent.isPending;
   const ai = docs.data?.documents.find((d) => d.key === "ai_analysis");
   return (
-    <AuthShell title="내 계정">
+    <AuthShell title="내 계정" backToPrevious>
       <ErrorNotice error={out.error ?? remove.error ?? consent.error ?? me.error ?? docs.error} />
       {me.isPending ? (
         <p role="status">계정을 불러오는 중이에요.</p>

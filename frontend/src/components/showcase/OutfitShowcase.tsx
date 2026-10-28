@@ -172,7 +172,8 @@ export function OutfitShowcase({ outfits }: { outfits: ShowcaseOutfit[] }) {
         >
           <ChevronLeft />
         </Button>
-        <p className="text-sm text-muted-foreground" aria-live="polite">
+        {/* Announced for screen readers only; no visible counter (user, 2026-10-28). */}
+        <p className="sr-only" aria-live="polite">
           {active + 1} / {outfits.length}
         </p>
         <Button

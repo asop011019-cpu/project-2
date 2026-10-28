@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,37 @@ export function AccountLink() {
     </Button>
   );
 }
-export function AuthShell({ title, children }: { title: string; children: ReactNode }) {
+export function AuthShell({
+  title,
+  backToPrevious = false,
+  children,
+}: {
+  title: string;
+  /** 앱 안에서 들어온 이전 화면으로 돌아간다. 이전 화면이 없으면(바로 연 경우) 처음 화면으로. */
+  backToPrevious?: boolean;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
   return (
     <main className="auth-shell">
       <header className="flex items-center justify-between">
-        <Button asChild variant="ghost" size="icon" aria-label="처음 화면으로">
-          <Link to="/">
+        {backToPrevious && canGoBack ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="이전 화면으로"
+            onClick={() => router.history.back()}
+          >
             <ArrowLeft aria-hidden="true" />
-          </Link>
-        </Button>
+          </Button>
+        ) : (
+          <Button asChild variant="ghost" size="icon" aria-label="처음 화면으로">
+            <Link to="/">
+              <ArrowLeft aria-hidden="true" />
+            </Link>
+          </Button>
+        )}
         <Link to="/" className="label-caps">
           입고 싶은 가능성
         </Link>

@@ -44,7 +44,6 @@ import { cn } from "@/lib/utils";
 import { INTRO_IMAGES } from "@/lib/site";
 import { track } from "@/lib/track";
 import { IntroScreen } from "./IntroScreen";
-import { PageTurn } from "@/components/motion/PageTurn";
 import { PreferenceRail } from "./PreferenceRail";
 import { StylePager, type PagerGenre } from "./StylePager";
 import { EditorialFrame } from "./EditorialFrame";
@@ -503,9 +502,9 @@ export function OnboardingScreen({
                   <ArrowLeft size={22} aria-hidden="true" />
                 </button>
               )}
-              <span className="label-caps">입고 싶은 가능성</span>
             </span>
-            {/* Account sits top right on every screen; the step count is gone (user, 2026-10-28). */}
+            {/* Account sits top right on every screen; the step count and the app name next to the
+                back button are gone (user, 2026-10-28). */}
             <AccountLink />
           </header>
 
@@ -774,11 +773,7 @@ export function OnboardingScreen({
                       session={session as SessionView}
                       styleId={activeId}
                       description={styleQuery.data?.description ?? null}
-                      busy={busy}
                       failed={!!error}
-                      onNavigate={(id) => {
-                        if (!busy) selectStyle(id);
-                      }}
                     />
                   ) : null}
 
@@ -993,48 +988,27 @@ function useDoubleTap(disabled: boolean, onDouble: (img?: StyleImage) => void) {
   });
 }
 
+// Moving between styles is done on the pager above; counters and prev/next are gone (user, 2026-10-28).
 function StyleCard({
   session,
   styleId,
   description,
-  busy,
   failed,
-  onNavigate,
 }: {
   session: SessionView;
   styleId: string;
   description: string | null;
-  busy: boolean;
   failed: boolean;
-  onNavigate: (id: string) => void;
 }) {
-  const order = session.activeStyleOrder;
-  const idx = order.indexOf(styleId);
   const name = session.styles.find((s) => s.id === styleId)?.name ?? "";
-  const prev = order[idx - 1];
-  const next = order[idx + 1];
   return (
     <article className={cn("mt-4", failed && "shake")}>
       <div className="swipe-footer">
         <h2>{name}</h2>
-        <span className="text-xs text-muted-foreground">
-          {idx + 1} / {order.length}
-        </span>
       </div>
       {description && (
         <p className="px-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
       )}
-      <div className="mt-4 flex items-center justify-between text-xs">
-        <Button variant="ghost" disabled={!prev || busy} onClick={() => prev && onNavigate(prev)}>
-          ← 이전
-        </Button>
-        <span className="text-muted-foreground">
-          응답 {session.progress.answeredCount} / {session.progress.totalCount}
-        </span>
-        <Button variant="ghost" disabled={!next || busy} onClick={() => next && onNavigate(next)}>
-          다음 →
-        </Button>
-      </div>
     </article>
   );
 }
@@ -1088,71 +1062,60 @@ function SummaryStep({
   const canComplete = summary?.session.progress.canComplete === true;
   return (
     <section key="summary" className="animate-page mt-6">
-      <PageTurn
-        enabled={canComplete}
-        busy={busy}
-        error={error}
-        hint="취향 저장하고 사진 등록으로"
-        next={
-          <>
-            <p className="label-caps text-muted-foreground">다음</p>
-            <p className="summary-title mt-3">사진 등록</p>
-            <p className="mt-2 text-sm text-muted-foreground">코디의 기준이 될 옷 한 벌</p>
-          </>
-        }
-        onTurn={onComplete}
-      >
-        <p className="label-caps text-muted-foreground">03 — 취향 확인</p>
-        <h1 className="summary-title mt-4">지금까지 고른 취향</h1>
-        {loading ? (
-          <p role="status" className="mt-8 text-muted-foreground">
-            요약을 불러오는 중…
-          </p>
-        ) : failed || !summary ? (
-          <div role="alert" className="mt-8 border-l-2 border-destructive pl-3 text-sm">
-            요약을 불러오지 못했어요.
-            <Button variant="link" className="ml-2 h-auto p-0" onClick={onRetry}>
-              다시 시도
-            </Button>
-          </div>
-        ) : (
-          <>
-            <PreferenceRail session={summary.session} message={null} failed={false} />
-            <ul className="liked-chips" aria-label="좋아요한 스타일">
-              {summary.likedStyles.map((s) => (
-                <li key={s.id}>{s.name}</li>
-              ))}
-            </ul>
-            <dl className="summary-counts">
-              {[
-                { label: "별로", count: summary.dislikedStyles.length },
-                { label: "건너뜀", count: summary.skippedStyles.length },
-                { label: "남음", count: summary.unansweredStyleIds.length },
-              ].map((g) => (
-                <div key={g.label}>
-                  <dt>{g.label}</dt>
-                  <dd>{g.count}</dd>
-                </div>
-              ))}
-            </dl>
-          </>
-        )}
-        {reason && (
-          <p role="status" className="mt-8 text-sm text-muted-foreground">
-            {reason}
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="mt-4 border-l-2 border-destructive pl-3 text-sm">
-            {error}
-          </p>
-        )}
-        <div className="mt-6 flex flex-col gap-3 md:flex-row">
-          <Button variant="outline" className="summary-action" onClick={onBack}>
-            스타일 더 보기
+      <p className="label-caps text-muted-foreground">03 — 취향 확인</p>
+      <h1 className="summary-title mt-4">지금까지 고른 취향</h1>
+      {loading ? (
+        <p role="status" className="mt-8 text-muted-foreground">
+          요약을 불러오는 중…
+        </p>
+      ) : failed || !summary ? (
+        <div role="alert" className="mt-8 border-l-2 border-destructive pl-3 text-sm">
+          요약을 불러오지 못했어요.
+          <Button variant="link" className="ml-2 h-auto p-0" onClick={onRetry}>
+            다시 시도
           </Button>
         </div>
-      </PageTurn>
+      ) : (
+        <>
+          <PreferenceRail session={summary.session} message={null} failed={false} />
+          <ul className="liked-chips" aria-label="좋아요한 스타일">
+            {summary.likedStyles.map((s) => (
+              <li key={s.id}>{s.name}</li>
+            ))}
+          </ul>
+          <dl className="summary-counts">
+            {[
+              { label: "별로", count: summary.dislikedStyles.length },
+              { label: "건너뜀", count: summary.skippedStyles.length },
+              { label: "남음", count: summary.unansweredStyleIds.length },
+            ].map((g) => (
+              <div key={g.label}>
+                <dt>{g.label}</dt>
+                <dd>{g.count}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
+      )}
+      {reason && (
+        <p role="status" className="mt-8 text-sm text-muted-foreground">
+          {reason}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="mt-4 border-l-2 border-destructive pl-3 text-sm">
+          {error}
+        </p>
+      )}
+      {/* A plain button instead of the swipe-to-turn page (user, 2026-10-28). */}
+      <div className="mt-6 flex flex-col gap-3 md:flex-row">
+        <Button className="summary-action" disabled={!canComplete || busy} onClick={onComplete}>
+          {busy ? "저장하는 중…" : "취향 저장하고 사진 등록으로"}
+        </Button>
+        <Button variant="outline" className="summary-action" onClick={onBack}>
+          스타일 더 보기
+        </Button>
+      </div>
     </section>
   );
 }

@@ -300,54 +300,6 @@ describe("OnboardingScreen", () => {
     await userEvent.click(done);
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
   });
-
-  it("요약 화면을 오른쪽에서 왼쪽으로 밀면 책장처럼 넘어가 저장 후 이동, 짧게 밀면 제자리", async () => {
-    setupOnline(session());
-    api.getSummary.mockResolvedValue({
-      session: session({ progress: { ...session().progress, canComplete: true } }),
-      likedStyles: [],
-      dislikedStyles: [],
-      skippedStyles: [],
-      unansweredStyleIds: [],
-      likedImages: [],
-      isExploringOnly: false,
-    });
-    api.completeSession.mockResolvedValue(session({ status: "completed" }));
-    const onComplete = renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "취향 확인하기" }));
-    const hint = await screen.findByRole("button", { name: /사진 등록으로/ });
-    await waitFor(() => expect(hint).toBeEnabled());
-    const page = hint.closest(".page-turn-page") as HTMLElement;
-    // jsdom has no PointerEvent; a MouseEvent with a pointer id is enough here.
-    if (!("PointerEvent" in window))
-      Object.assign(window, {
-        PointerEvent: class extends MouseEvent {
-          pointerId: number;
-          pointerType: string;
-          constructor(type: string, init: PointerEventInit = {}) {
-            super(type, init);
-            this.pointerId = init.pointerId ?? 1;
-            this.pointerType = init.pointerType ?? "touch";
-          }
-        },
-      });
-    const drag = async (toX: number, toY = 100) => {
-      fireEvent.pointerDown(page, { pointerId: 1, clientX: 900, clientY: 100, button: 0 });
-      fireEvent.pointerMove(page, { pointerId: 1, clientX: 880, clientY: toY });
-      fireEvent.pointerMove(page, { pointerId: 1, clientX: toX, clientY: toY });
-      // Slow enough that only the distance decides, not a flick.
-      await new Promise((r) => setTimeout(r, 400));
-      fireEvent.pointerUp(page, { pointerId: 1, clientX: toX, clientY: toY });
-    };
-    await drag(800); // short: springs back
-    await drag(880, 400); // mostly vertical: a scroll, not a turn
-    expect(api.completeSession).not.toHaveBeenCalled();
-    expect(page.style.transform).toBe("");
-    await drag(300); // past a third of the width
-    expect(page.style.transform).toContain("rotateY(-95deg)");
-    await waitFor(() => expect(api.completeSession).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
-  });
 });
 
 describe("ONB-002-R1", () => {
@@ -403,11 +355,11 @@ describe("ONB-002-R1", () => {
     expect(await screen.findByRole("heading", { name: "여성복의 장르" })).toBeInTheDocument();
   });
 
-  it("다음 클릭: putPosition 본문, 성공 시에만 이동", async () => {
+  it("옆 카드 선택: putPosition 본문, 성공 시에만 이동", async () => {
     setupOnline(session());
     api.putPosition.mockResolvedValue(session({ currentStyleId: "b" }));
     renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "다음 →" }));
+    await userEvent.click(await screen.findByRole("listitem", { name: /: 스타일B/ }));
     await waitFor(() => expect(api.putPosition).toHaveBeenCalledWith("b"));
     expect(await screen.findByRole("heading", { name: "스타일B" })).toBeInTheDocument();
   });
@@ -416,7 +368,7 @@ describe("ONB-002-R1", () => {
     setupOnline(session({ currentStyleId: "b" }));
     api.putPosition.mockRejectedValue(new ApiError({ status: 500, code: "X", message: "" }));
     renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "← 이전" }));
+    await userEvent.click(await screen.findByRole("listitem", { name: /: 스타일A/ }));
     expect(
       await screen.findByText("위치를 저장하지 못했어요. 다시 시도해 주세요."),
     ).toBeInTheDocument();
@@ -430,7 +382,7 @@ describe("ONB-002-R1", () => {
       new ApiError({ status: 401, code: "SESSION_REQUIRED", message: "" }),
     );
     renderScreen();
-    await userEvent.click(await screen.findByRole("button", { name: "다음 →" }));
+    await userEvent.click(await screen.findByRole("listitem", { name: /: 스타일B/ }));
     expect(await screen.findByText(/이전 기록을 불러오지 못했어요/)).toBeInTheDocument();
     expect(api.resetOnboardingSession).not.toHaveBeenCalled();
     expect(api.createSession).toHaveBeenCalledTimes(1);

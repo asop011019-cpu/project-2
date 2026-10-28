@@ -199,9 +199,6 @@ export function StylePager({
         >
           <header className="style-pager-head">
             <h3>{genre.name}</h3>
-            <span>
-              장르 {gi + 1} / {genres.length}
-            </span>
           </header>
           <ul
             ref={(el) => {
