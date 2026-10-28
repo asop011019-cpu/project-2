@@ -152,6 +152,35 @@ const migrations: (string | ((db: DatabaseSync) => void))[] = [
      session_id TEXT PRIMARY KEY REFERENCES onboarding_sessions(id) ON DELETE CASCADE,
      vocabulary_version TEXT NOT NULL, values_json TEXT NOT NULL, updated_at TEXT NOT NULL
    ) STRICT;`,
+  // v10 (WARD-001): the account's wardrobe. Garments belong to the account, not the onboarding
+  // progress, so a progress reset keeps them; the progress only points at its reference garment.
+  // Each item owns its photo file. Account garments move over with the same id and file name;
+  // rows of pre-account anonymous progress stay in `garments` (nothing reads them any more).
+  `CREATE TABLE wardrobe_items (
+     id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     garment_type TEXT NOT NULL CHECK(garment_type IN ('pants','skirt','top','outer')),
+     brand TEXT, product_name TEXT, purchase_url TEXT, filename TEXT NOT NULL UNIQUE,
+     width INTEGER NOT NULL, height INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+   ) STRICT;
+   CREATE INDEX wardrobe_items_user_idx ON wardrobe_items(user_id,created_at);
+   CREATE TABLE wardrobe_item_attributes (
+     item_id TEXT PRIMARY KEY REFERENCES wardrobe_items(id) ON DELETE CASCADE,
+     garment_type TEXT NOT NULL CHECK(garment_type IN ('pants','skirt','top','outer')),
+     vocabulary_version TEXT NOT NULL, values_json TEXT NOT NULL, raw_text TEXT,
+     confirmed_image TEXT NOT NULL, updated_at TEXT NOT NULL
+   ) STRICT;
+   CREATE TABLE reference_garments (
+     session_id TEXT PRIMARY KEY REFERENCES onboarding_sessions(id) ON DELETE CASCADE,
+     item_id TEXT NOT NULL REFERENCES wardrobe_items(id) ON DELETE CASCADE
+   ) STRICT;
+   CREATE INDEX reference_garments_item_idx ON reference_garments(item_id);
+   INSERT INTO wardrobe_items SELECT g.id,s.user_id,g.garment_type,g.brand,g.product_name,g.purchase_url,g.filename,g.width,g.height,g.created_at,g.updated_at
+     FROM garments g JOIN onboarding_sessions s ON s.id=g.session_id WHERE s.user_id IS NOT NULL;
+   INSERT INTO wardrobe_item_attributes SELECT g.id,a.garment_type,a.vocabulary_version,a.values_json,a.raw_text,a.confirmed_image,a.updated_at
+     FROM garment_attributes a JOIN garments g ON g.session_id=a.session_id JOIN onboarding_sessions s ON s.id=g.session_id WHERE s.user_id IS NOT NULL;
+   INSERT INTO reference_garments SELECT g.session_id,g.id
+     FROM garments g JOIN onboarding_sessions s ON s.id=g.session_id WHERE s.user_id IS NOT NULL;
+   DELETE FROM garments WHERE session_id IN (SELECT id FROM onboarding_sessions WHERE user_id IS NOT NULL);`,
 ];
 
 /** Applies pending migrations; `target` (tests only) stops at an older schema version. */

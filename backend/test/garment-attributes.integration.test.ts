@@ -278,7 +278,9 @@ test("attributes belong to the account: others cannot read or write them, and de
   });
   const count = () =>
     Number(
-      c.db.prepare("SELECT count(*) n FROM garment_attributes").get()!["n"],
+      c.db.prepare("SELECT count(*) n FROM wardrobe_item_attributes").get()![
+        "n"
+      ],
     );
   assert.equal((await a.user.request("DELETE", url)).statusCode, 204);
   assert.equal(count(), 0);

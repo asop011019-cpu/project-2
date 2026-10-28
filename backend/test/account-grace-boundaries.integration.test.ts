@@ -68,7 +68,9 @@ async function withdrawn(c: Context, subject: string, color: number) {
     c.config.garmentRoot!,
     String(
       c.db
-        .prepare("SELECT filename FROM garments ORDER BY rowid DESC LIMIT 1")
+        .prepare(
+          "SELECT filename FROM wardrobe_items ORDER BY rowid DESC LIMIT 1",
+        )
         .get()!["filename"],
     ),
   );

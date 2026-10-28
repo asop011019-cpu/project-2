@@ -64,7 +64,9 @@ async function withdrawn(c: Context, subject: string) {
     .id as string;
   const photo = path.join(
     c.config.garmentRoot!,
-    String(c.db.prepare("SELECT filename FROM garments").get()!["filename"]),
+    String(
+      c.db.prepare("SELECT filename FROM wardrobe_items").get()!["filename"],
+    ),
   );
   assert.equal(
     (await user.request("DELETE", "/api/auth/account", {})).statusCode,

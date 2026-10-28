@@ -11,7 +11,8 @@ export const OCCASIONS = [
   "outdoor",
 ] as const;
 export const TEMPERATURE_RANGE = { min: -20, max: 40 } as const;
-export const BUDGET_RANGE = { min: 10_000, max: 5_000_000 } as const;
+/** 0 won is a real answer: use only garments already in the account's wardrobe (WARD-001). */
+export const BUDGET_RANGE = { min: 0, max: 5_000_000 } as const;
 /** One occasion for now; an array so allowing several later does not break the API. */
 export const MAX_OCCASIONS = 1;
 

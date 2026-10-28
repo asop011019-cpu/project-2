@@ -229,7 +229,9 @@ test("double requests and concurrent retries create one job and unlink once", as
   await putGarment(c, a.user.cookie, 80);
   const photo = path.join(
     c.config.garmentRoot!,
-    String(c.db.prepare("SELECT filename FROM garments").get()!["filename"]),
+    String(
+      c.db.prepare("SELECT filename FROM wardrobe_items").get()!["filename"],
+    ),
   );
   // A crash after the photo was removed but before the rows were: the retry treats it as removed.
   c.kakao.unlinkMode = "not_configured";
@@ -277,7 +279,9 @@ test("a photo already removed by an interrupted run does not block the deletion"
   await putGarment(c, a.user.cookie, 90);
   const photo = path.join(
     c.config.garmentRoot!,
-    String(c.db.prepare("SELECT filename FROM garments").get()!["filename"]),
+    String(
+      c.db.prepare("SELECT filename FROM wardrobe_items").get()!["filename"],
+    ),
   );
   unlinkSync(photo);
   assert.equal(

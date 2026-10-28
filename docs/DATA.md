@@ -72,3 +72,7 @@ SQLite `STRICT`, CHECK, UNIQUE, 복합 FK를 사용합니다. 스타일과 상�
 ## COND-001
 
 스키마 v9: `recommendation_conditions(session_id PK → onboarding_sessions ON DELETE CASCADE, vocabulary_version, values_json, updated_at)` STRICT 1행. 기존 표는 바꾸지 않는 추가 전용 마이그레이션. 미입력은 행 없음 또는 해당 키 null, 상관없음은 `"any"`로 저장해 둘을 섞지 않는다. 어휘·검증은 `backend/src/modules/conditions/conditions.ts`(Fastify/SQLite 무관). 계약은 [API.md](API.md#추천-조건-cond-001).
+
+## WARD-001
+
+스키마 v10: `wardrobe_items`(계정 소유, 항목마다 사진 파일 1개)·`wardrobe_item_attributes`(항목별 확정 속성)·`reference_garments`(진행 1개 → 옷장 항목 1개). 계정에 붙은 `garments`·`garment_attributes` 행은 같은 ID·파일명으로 옮기고 원래 행은 지움. 계정 없는 예전 익명 진행의 `garments` 행은 그대로 둠. 진행 초기화·삭제는 기준 참조만 지우고 옷장은 유지, 탈퇴 삭제 실행 때 옷장과 사진을 모두 지움. 자세한 규칙은 [WARD-001.md](WARD-001.md#저장-스키마-v10-추가--이관).

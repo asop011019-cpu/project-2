@@ -56,9 +56,7 @@ const count = (c: Context, sql: string, ...args: string[]) =>
   Number(c.db.prepare(sql).get(...args)!["n"]);
 function fileOf(c: Context, userId: string) {
   const row = c.db
-    .prepare(
-      "SELECT g.filename FROM garments g JOIN onboarding_sessions o ON o.id=g.session_id WHERE o.user_id=?",
-    )
+    .prepare("SELECT filename FROM wardrobe_items WHERE user_id=?")
     .get(userId) as { filename: string } | undefined;
   return row ? path.join(c.config.garmentRoot!, row.filename) : undefined;
 }

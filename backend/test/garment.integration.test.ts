@@ -145,17 +145,24 @@ test("garment ownership, header protection, expiry, reset and session deletion",
     ).statusCode,
     403,
   );
+  // WARD-001: a reset or a deleted progress drops only the reference; the wardrobe stays.
   assert.equal(
     (await a.request("POST", "/api/onboarding/session/reset", {})).statusCode,
     200,
   );
-  assert.deepEqual(await readdir(c.config.garmentRoot!), []);
+  assert.deepEqual((await a.request("GET", url)).json(), { garment: null });
+  assert.equal((await readdir(c.config.garmentRoot!)).length, 1);
+  let wardrobe = (await a.request("GET", "/api/wardrobe")).json();
+  assert.equal(wardrobe.items.length, 1);
+  assert.equal(wardrobe.referenceItemId, null);
   assert.equal((await put()).statusCode, 200);
   assert.equal(
     (await a.request("DELETE", "/api/onboarding/session")).statusCode,
     204,
   );
-  assert.deepEqual(await readdir(c.config.garmentRoot!), []);
+  assert.equal((await readdir(c.config.garmentRoot!)).length, 2);
+  wardrobe = (await a.request("GET", "/api/wardrobe")).json();
+  assert.equal(wardrobe.items.length, 2);
   await a.create();
   await put();
   c.advance(31 * 86400000);
@@ -174,14 +181,14 @@ test("concurrent replacements keep final image; DB failures preserve previous fi
   const before = (await a.request("GET", url)).body;
   const bytes = (await a.request("GET", url + "/image")).rawPayload;
   c.db.exec(
-    "CREATE TRIGGER fail_garment BEFORE UPDATE ON garments BEGIN SELECT RAISE(ABORT,'test'); END",
+    "CREATE TRIGGER fail_garment BEFORE UPDATE ON wardrobe_items BEGIN SELECT RAISE(ABORT,'test'); END",
   );
   assert.equal((await put()).statusCode, 500);
   assert.equal((await a.request("GET", url)).body, before);
   assert.deepEqual((await a.request("GET", url + "/image")).rawPayload, bytes);
   assert.equal((await readdir(c.config.garmentRoot!)).length, 1);
   c.db.exec("DROP TRIGGER fail_garment");
-  const row = c.db.prepare("SELECT filename FROM garments").get()!;
+  const row = c.db.prepare("SELECT filename FROM wardrobe_items").get()!;
   const file = path.join(c.config.garmentRoot!, String(row.filename));
   await rename(file, file + ".away");
   assert.equal((await a.request("DELETE", url)).statusCode, 500);

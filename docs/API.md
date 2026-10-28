@@ -191,7 +191,7 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 | `temperatureC` | `null` | `"any"` | `{ "min": 정수, "max": 정수 }`, -20 ≤ min ≤ max ≤ 40 (섭씨, 같은 값 가능) |
 | `occasions` | `null` | `"any"` | 1개 배열: `daily`(일상)·`work_school`(출근·등교)·`date_gathering`(데이트·모임)·`formal_event`(격식 행사)·`outdoor`(야외활동). 배열이라 나중에 복수로 넓혀도 호환 |
 | `formality` | `null` | `"any"` | 정수 0(편안함)~100(격식) |
-| `additionalBudgetKrw` | `null` | `"any"`(상한 없음) | 원화 정수 10,000~5,000,000 |
+| `additionalBudgetKrw` | `null` | `"any"`(상한 없음) | 원화 정수 0~5,000,000. **0 = 추가 구매 없이 옷장의 본인 의류만**(WARD-001) |
 | `updatedAt` | 응답 전용. 저장 행이 없으면 null | | |
 
 - 빈 배열·`["any"]`·2개 이상·중복·`"any"`와 값 섞기는 400.
@@ -224,3 +224,7 @@ JSON 요청에는 `Content-Type: application/json`을 사용합니다. **모든 
 - 조건은 계정의 취향 진행(`onboarding_sessions`)에 1개. `DELETE /session`, `POST /session/reset`, 탈퇴 삭제(유예 30일 후 실행) 때 함께 삭제. 유예 중 복구하면 그대로 남음.
 - 의류 범주 전환, 기준 옷 사진 교체·종류 변경·삭제는 조건을 바꾸지 않습니다.
 - 추천(M4)은 요청 시점에 현재 범주의 `SessionSummary` + 기준 옷과 확인 속성 + 이 조건을 읽어 조합합니다. 조건에 취향·옷 정보를 복사하지 않습니다. 미입력 항목은 추천을 막지 않고 "조건 없음"으로 처리합니다.
+
+## 내 옷장 (WARD-001)
+
+계정 범위 옷장 목록·사진·개별 삭제, 기준 의류 선택(`PUT /api/onboarding/session/garment/reference`), 기준 의류 저장의 선택 필드 `itemId`, 0원 진행 확인(`GET /api/onboarding/session/recommendation-check`). 경로·요청·응답·오류·삭제 영향은 [WARD-001.md](WARD-001.md#api-로그인-필요-남의-항목은-존재-여부도-알리지-않고-404). 기존 기준 의류 경로의 요청·응답 모양은 바뀌지 않음.

@@ -172,12 +172,12 @@ test("values outside the contract are rejected and leave what was saved", async 
     ["formality", 101],
     ["formality", 50.5],
     ["formality", "50"],
-    ["additionalBudgetKrw", 9999],
+    ["additionalBudgetKrw", -1],
     ["additionalBudgetKrw", 5000001],
     ["additionalBudgetKrw", 15000.5],
     ["additionalBudgetKrw", -10000],
     ["additionalBudgetKrw", "50000"],
-    ["additionalBudgetKrw", 0],
+    ["additionalBudgetKrw", "0"],
   ];
   for (const [field, value] of cases) {
     const r = await m.put({ ...good, [field]: value });
@@ -327,7 +327,7 @@ test("migration v9 adds the conditions table and keeps existing progress", async
   db.exec(
     `INSERT INTO onboarding_sessions(id,token_hash,started_at,updated_at,expires_at) VALUES('s1','${"a".repeat(64)}','2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z','2026-12-01T00:00:00.000Z');`,
   );
-  migrate(db);
+  migrate(db, 9);
   assert.equal(db.prepare("PRAGMA user_version").get()!["user_version"], 9);
   assert.equal(
     db.prepare("SELECT count(*) n FROM onboarding_sessions").get()!["n"],

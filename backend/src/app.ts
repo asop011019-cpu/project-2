@@ -1,4 +1,6 @@
 import { registerGarmentRoutes } from "./modules/garment/routes.ts";
+import { registerWardrobeRoutes } from "./modules/wardrobe/routes.ts";
+import { WardrobeStore } from "./modules/wardrobe/store.ts";
 import { registerConditionsRoutes } from "./modules/conditions/routes.ts";
 import Fastify, { LogController } from "fastify";
 import cookie from "@fastify/cookie";
@@ -39,11 +41,11 @@ export function buildApp(
     db.close();
     throw error;
   }
-  const repository = new SqliteOnboardingRepository(
-    db,
+  const garmentRoot =
     config.garmentRoot ??
-      path.join(path.dirname(config.databasePath), "garments"),
-  );
+    path.join(path.dirname(config.databasePath), "garments");
+  const repository = new SqliteOnboardingRepository(db, garmentRoot);
+  const wardrobe = new WardrobeStore(db, garmentRoot);
   const service = new OnboardingService(
     repository,
     config.sessionTtlSeconds,
@@ -154,7 +156,11 @@ export function buildApp(
     options.oauthProvider ??
       (config.auth.kakao ? kakaoProvider(config.auth.kakao) : undefined),
     options.now,
-    (userId) => service.deleteForUser(userId),
+    // Wardrobe photos first, then the progress; each step is safe to repeat on a retry.
+    (userId) => {
+      wardrobe.removeAllForUser(userId);
+      service.deleteForUser(userId);
+    },
   );
   // Run deletions whose 30-day grace has ended, and resume ones interrupted by a crash or a
   // provider outage: once at start, then every deletionSweepSeconds.
@@ -174,7 +180,8 @@ export function buildApp(
   const guard = createAuthGuard(auth, config);
   registerAuthRoutes(app, auth, config, guard);
   registerOnboardingRoutes(app, service, guard);
-  registerGarmentRoutes(app, db, service, config, guard);
+  registerGarmentRoutes(app, wardrobe, service, guard);
+  registerWardrobeRoutes(app, wardrobe, service, guard);
   registerConditionsRoutes(app, db, service, guard);
   // A local image URL stays readable only while it belongs to currently public content.
   app.get("/media/*", async (request, reply) => {

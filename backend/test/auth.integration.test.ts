@@ -501,7 +501,9 @@ test("accounts never see each other's photos; deleting a photo removes only the 
   assert.equal((await putGarment(c, b.cookie, 20)).statusCode, 200);
   const files = () =>
     (
-      c.db.prepare("SELECT filename FROM garments").all() as {
+      c.db
+        .prepare("SELECT filename FROM wardrobe_items ORDER BY rowid")
+        .all() as {
         filename: string;
       }[]
     ).map((r) => path.join(c.config.garmentRoot!, r.filename));
