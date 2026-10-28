@@ -1096,17 +1096,12 @@ function SummaryStep({
               <li key={s.id}>{s.name}</li>
             ))}
           </ul>
+          {/* No 별로/건너뜀 counts: styles can only be liked now (user, 2026-10-29). */}
           <dl className="summary-counts">
-            {[
-              { label: "별로", count: summary.dislikedStyles.length },
-              { label: "건너뜀", count: summary.skippedStyles.length },
-              { label: "남음", count: summary.unansweredStyleIds.length },
-            ].map((g) => (
-              <div key={g.label}>
-                <dt>{g.label}</dt>
-                <dd>{g.count}</dd>
-              </div>
-            ))}
+            <div>
+              <dt>남음</dt>
+              <dd>{summary.unansweredStyleIds.length}</dd>
+            </div>
           </dl>
         </>
       )}

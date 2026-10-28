@@ -300,6 +300,9 @@ describe("OnboardingScreen", () => {
     const done = await screen.findByRole("button", { name: "취향 저장하고 사진 등록으로" });
     await waitFor(() => expect(done).toBeEnabled());
     expect(screen.getByText(/좋아요한 스타일만 취향으로 반영해요/)).toBeInTheDocument();
+    expect(screen.queryByText("별로")).not.toBeInTheDocument();
+    expect(screen.queryByText("건너뜀")).not.toBeInTheDocument();
+    expect(screen.getByText("남음")).toBeInTheDocument();
     await userEvent.click(done);
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(api.completeSession).not.toHaveBeenCalled();
