@@ -46,6 +46,8 @@ export interface GarmentMetadata {
   brand: string | null;
   productName: string | null;
   purchaseUrl: string | null;
+  /** WARD-001 옷장 항목 ID. 같은 ID 재전송은 같은 항목 갱신, 새 ID는 새 옷 등록 */
+  itemId?: string;
 }
 
 export interface ApiIssue {

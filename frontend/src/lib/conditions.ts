@@ -20,10 +20,13 @@ export const TEMP_MAX = 40;
 /** Shown and sent when the user has not set them (user, 2026-10-28). */
 export const DEFAULT_TEMP: TemperatureRange = { min: 7, max: 17 };
 export const DEFAULT_FORMALITY = 50;
-export const BUDGET_MIN = 10_000;
+/** 0원 = 추가 구매 없이 내 옷장 옷만 (WARD-001). 미입력(null)·상한 없음("any")과 다른 값. */
+export const BUDGET_MIN = 0;
 export const BUDGET_MAX = 5_000_000;
 export const BUDGET_PRESETS = [50_000, 100_000, 200_000, 300_000, 500_000] as const;
-export const BUDGET_RANGE_MESSAGE = "1만 원~500만 원 사이로 입력해 주세요.";
+export const BUDGET_RANGE_MESSAGE = "0원~500만 원 사이로 입력해 주세요.";
+export const OWNED_ONLY_NOTICE =
+  "추가 구매 없이 내 옷장에 등록한 옷으로만 코디를 제안해요. 필요한 옷이 부족하면 코디를 완성하지 못할 수 있어요.";
 
 export const OCCASIONS: { value: Occasion; label: string }[] = [
   { value: "daily", label: "일상" },

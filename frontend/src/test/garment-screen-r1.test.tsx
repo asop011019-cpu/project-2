@@ -17,6 +17,14 @@ const imageMocks = vi.hoisted(() => ({
   checkImageFile: vi.fn(),
 }));
 
+// WARD-001: these screens are tested without a wardrobe server; the list starts empty.
+vi.mock("@/lib/wardrobe-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/wardrobe-api")>()),
+  getWardrobe: vi.fn().mockResolvedValue({ items: [], referenceItemId: null }),
+  selectReference: vi.fn(),
+  deleteWardrobeItem: vi.fn(),
+}));
+
 vi.mock("@/lib/onboarding-api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/onboarding-api")>();
   return {

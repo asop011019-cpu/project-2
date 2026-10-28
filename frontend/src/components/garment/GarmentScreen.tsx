@@ -43,6 +43,14 @@ import { GarmentPhoto } from "./GarmentPhoto";
 import { GarmentForm } from "./GarmentForm";
 import { GarmentAttributes } from "./GarmentAttributes";
 import { GarmentSheet } from "./GarmentSheet";
+import { WardrobeShelf } from "./WardrobeShelf";
+import {
+  CHECK_QUERY_KEY,
+  WARDROBE_QUERY_KEY,
+  deleteWardrobeItem,
+  getWardrobe,
+  selectReference,
+} from "@/lib/wardrobe-api";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 
 const RESTORE_QUERY_KEY = ["onboarding", "garment"] as const;
@@ -140,6 +148,8 @@ export function GarmentScreen({
   /** 사진 재시도 시 캐시를 우회하기 위한 시퀀스 */
   const [imageRetrySeq, setImageRetrySeq] = useState(0);
 
+  /** 새 옷 등록에 쓸 옷장 항목 ID. 같은 저장을 다시 보내도 같은 항목이 갱신된다(중복 방지). */
+  const newItemIdRef = useRef<string | null>(null);
   /** 사용자가 화면을 건드렸는지. 늦게 도착한 복원 응답이 입력을 덮지 못하게 한다. */
   const touchedRef = useRef(false);
   /** 사진 읽기 경쟁 방지용 시퀀스 */
@@ -197,11 +207,19 @@ export function GarmentScreen({
     },
   });
 
-  // 복원 응답 적용 — 사용자가 이미 수정을 시작했으면 덮어쓰지 않는다
-  useEffect(() => {
-    if (restoreQuery.data === undefined) return;
-    if (touchedRef.current) return;
-    const g = restoreQuery.data;
+  const wardrobeQuery = useQuery({
+    queryKey: WARDROBE_QUERY_KEY,
+    retry: false,
+    enabled: authReady,
+    queryFn: getWardrobe,
+  });
+  /** 옷장 목록과 0원 진행 확인은 저장·삭제·기준 변경 뒤 서버 값으로 다시 받는다. */
+  const refreshWardrobe = () => {
+    void queryClient.invalidateQueries({ queryKey: WARDROBE_QUERY_KEY });
+    void queryClient.invalidateQueries({ queryKey: CHECK_QUERY_KEY });
+  };
+
+  const applyGarment = (g: Garment | null) => {
     setSaved(g);
     setImageFailed(false);
     if (g) {
@@ -212,6 +230,13 @@ export function GarmentScreen({
       setAttrValues(g.attributes ? flattenValues(g.attributes.values) : {});
       setRawText(g.attributes?.rawText ?? "");
     }
+  };
+
+  // 복원 응답 적용 — 사용자가 이미 수정을 시작했으면 덮어쓰지 않는다
+  useEffect(() => {
+    if (restoreQuery.data === undefined) return;
+    if (touchedRef.current) return;
+    applyGarment(restoreQuery.data);
   }, [restoreQuery.data]);
 
   // 복원 단계의 401도 자동 초기화하지 않고 명시적 선택을 받는다
@@ -318,7 +343,9 @@ export function GarmentScreen({
       setFieldErrors({});
       setActionError(null);
       setImageFailed(false);
-      toast.success("사진과 정보가 저장되었어요");
+      newItemIdRef.current = null;
+      refreshWardrobe();
+      toast.success("내 옷장에 저장했어요");
     },
     onError: (e) => handleApiFailure("save", e),
   });
@@ -337,6 +364,7 @@ export function GarmentScreen({
       setAttrNotice(null);
       toast.success("저장했어요");
       setAttributesOpen(false);
+      refreshWardrobe();
     },
     onError: async (e) => {
       // 입력한 선택값과 글은 어떤 실패에도 지우지 않는다
@@ -384,6 +412,7 @@ export function GarmentScreen({
       queryClient.setQueryData(RESTORE_QUERY_KEY, null);
       setDeleteOpen(false);
       clearAll();
+      refreshWardrobe();
       toast.success("등록한 옷을 삭제했어요");
     },
     onError: (e) => {
@@ -400,12 +429,67 @@ export function GarmentScreen({
       clearAll();
       touchedRef.current = false;
       void queryClient.resetQueries({ queryKey: RESTORE_QUERY_KEY });
+      refreshWardrobe();
     },
     onError: () => {
       setResetOpen(false);
       toast.error("세션을 다시 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
     },
   });
+
+  /** 옷장 목록 동작의 실패: 입력은 건드리지 않고 알린 뒤 목록을 서버 값으로 다시 받는다. */
+  const shelfFailure = (e: unknown, message: string) => {
+    if (
+      e instanceof ApiError &&
+      (e.code === "AUTH_REQUIRED" || e.code === "CONSENT_UPDATE_REQUIRED")
+    )
+      return;
+    if (e instanceof ApiError && e.status === 401) {
+      setSessionExpired(true);
+      return;
+    }
+    refreshWardrobe();
+    toast.error(
+      e instanceof ApiError && e.status === 404 ? "옷장에서 그 옷을 찾을 수 없어요." : message,
+    );
+  };
+
+  const selectMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      await queryClient.cancelQueries({ queryKey: RESTORE_QUERY_KEY });
+      return selectReference(itemId);
+    },
+    onSuccess: (g) => {
+      queryClient.setQueryData(RESTORE_QUERY_KEY, g);
+      clearAll();
+      applyGarment(g);
+      touchedRef.current = false;
+      newItemIdRef.current = null;
+      refreshWardrobe();
+      toast.success("기준 옷을 바꿨어요");
+    },
+    onError: (e) => shelfFailure(e, "기준 옷을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요."),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (itemId: string) => deleteWardrobeItem(itemId),
+    onSuccess: (_, itemId) => {
+      if (saved?.id === itemId) {
+        queryClient.setQueryData(RESTORE_QUERY_KEY, null);
+        clearAll();
+      }
+      refreshWardrobe();
+      toast.success("내 옷장에서 삭제했어요");
+    },
+    onError: (e) => shelfFailure(e, "삭제하지 못했어요. 잠시 후 다시 시도해 주세요."),
+  });
+
+  /** 기준 옷과 다른 옷을 등록하도록 입력을 비운다. 저장해야 옷장에 생긴다. */
+  const handleNewGarment = () => {
+    clearAll();
+    touchedRef.current = true;
+    newItemIdRef.current = null;
+  };
 
   const restoring = authReady && restoreQuery.isPending && !touchedRef.current;
   const restoreFailed =
@@ -422,7 +506,11 @@ export function GarmentScreen({
 
   /** 진행 중인 변경 요청이 있으면 입력·저장·삭제·세션초기화를 모두 잠근다 */
   const actionPending =
-    saveMutation.isPending || deleteMutation.isPending || resetMutation.isPending;
+    saveMutation.isPending ||
+    deleteMutation.isPending ||
+    resetMutation.isPending ||
+    selectMutation.isPending ||
+    removeMutation.isPending;
   const formDisabled = actionPending || sessionExpired || restoring;
   const canSave =
     !formDisabled &&
@@ -441,7 +529,9 @@ export function GarmentScreen({
     }
     setFieldErrors({});
     setActionError(null);
-    saveMutation.mutate({ metadata: built.metadata, image: localFile });
+    // 저장된 기준 옷이면 그 항목, 아니면 새 항목. 재시도도 같은 ID를 보낸다.
+    const itemId = saved?.id ?? (newItemIdRef.current ??= crypto.randomUUID());
+    saveMutation.mutate({ metadata: { ...built.metadata, itemId }, image: localFile });
   };
 
   const handleAttrToggle = (axis: AxisDef, value: string) => {
@@ -879,6 +969,25 @@ export function GarmentScreen({
             </div>
           </section>
         </div>
+
+        <WardrobeShelf
+          items={wardrobeQuery.data?.items ?? []}
+          referenceId={wardrobeQuery.data?.referenceItemId ?? null}
+          loading={authReady && wardrobeQuery.isPending}
+          failed={wardrobeQuery.isError}
+          disabled={formDisabled}
+          busyId={
+            selectMutation.isPending
+              ? (selectMutation.variables ?? null)
+              : removeMutation.isPending
+                ? (removeMutation.variables ?? null)
+                : null
+          }
+          onSelect={(id) => selectMutation.mutate(id)}
+          onDelete={(id) => removeMutation.mutate(id)}
+          onNew={saved !== null ? handleNewGarment : null}
+          onRetry={() => void wardrobeQuery.refetch()}
+        />
       </div>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -886,7 +995,8 @@ export function GarmentScreen({
           <AlertDialogHeader>
             <AlertDialogTitle>등록한 옷을 삭제할까요?</AlertDialogTitle>
             <AlertDialogDescription>
-              저장된 사진과 정보가 삭제됩니다. 이 작업은 되돌릴 수 없어요.
+              이 옷의 사진과 정보가 내 옷장에서 삭제됩니다. 다른 옷은 그대로예요. 이 작업은 되돌릴
+              수 없어요.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -909,7 +1019,7 @@ export function GarmentScreen({
           <AlertDialogHeader>
             <AlertDialogTitle>처음부터 다시 시작할까요?</AlertDialogTitle>
             <AlertDialogDescription>
-              지금까지 입력한 내용과 저장된 옷이 모두 지워지고 새 세션으로 시작해요.
+              취향 진행과 기준 옷 선택이 처음으로 돌아가요. 내 옷장에 저장한 옷은 그대로 남아요.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

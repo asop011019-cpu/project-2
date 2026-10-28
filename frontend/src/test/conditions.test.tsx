@@ -7,6 +7,11 @@ import { DRAFT_KEY, conditionHints, unansweredLabels, type Conditions } from "@/
 
 const api = vi.hoisted(() => ({ getConditions: vi.fn(), putConditions: vi.fn() }));
 vi.mock("@/lib/conditions-api", () => api);
+const wardrobe = vi.hoisted(() => ({ getRecommendationCheck: vi.fn() }));
+vi.mock("@/lib/wardrobe-api", async (orig) => ({
+  ...(await orig<typeof import("@/lib/wardrobe-api")>()),
+  getRecommendationCheck: wardrobe.getRecommendationCheck,
+}));
 
 import { ConditionsScreen } from "@/components/conditions/ConditionsScreen";
 
@@ -160,10 +165,15 @@ describe("코디 조건 화면", { timeout: 15_000 }, () => {
     const budget = await screen.findByRole("region", { name: "추가 구매 예산" });
     await userEvent.click(within(budget).getByRole("button", { name: "직접 입력" }));
     const input = screen.getByLabelText("예산 금액");
-    await userEvent.type(input, "5000");
-    expect(input).toHaveValue("5,000");
-    expect(screen.getByText("1만 원~500만 원 사이로 입력해 주세요.")).toBeInTheDocument();
+    await userEvent.type(input, "5000001");
+    expect(input).toHaveValue("5,000,001");
+    expect(screen.getByText("0원~500만 원 사이로 입력해 주세요.")).toBeInTheDocument();
     expect(saveBtn()).toBeDisabled();
+    // WARD-001: no 10,000 won minimum any more.
+    await userEvent.clear(input);
+    await userEvent.type(input, "5000");
+    expect(status("cond-budget")).toHaveTextContent("5,000원");
+    expect(saveBtn()).toBeEnabled();
     await userEvent.clear(input);
     await userEvent.type(input, "150000");
     expect(input).toHaveValue("150,000");
@@ -294,5 +304,97 @@ describe("코디 조건 안내", { timeout: 15_000 }, () => {
     );
     await userEvent.click(within(section("격식")).getByRole("button", { name: "상관없음" }));
     expect(within(section("격식")).queryByText(/격식 행사인데/)).not.toBeInTheDocument();
+  });
+
+  describe("WARD-001 0원 예산", () => {
+    const NOTICE =
+      "추가 구매 없이 내 옷장에 등록한 옷으로만 코디를 제안해요. 필요한 옷이 부족하면 코디를 완성하지 못할 수 있어요.";
+
+    it("0원 칩은 알림 후 [계속]이면 0원으로 저장하고, 저장할 때 다시 묻지 않는다", async () => {
+      api.getConditions.mockResolvedValue(EMPTY);
+      api.putConditions.mockImplementation(async (v) => ({ ...v, updatedAt: "x" }));
+      wardrobe.getRecommendationCheck.mockResolvedValue({
+        budgetMode: "owned_only",
+        blockedReason: null,
+        missing: [],
+        wardrobeCount: 3,
+      });
+      renderScreen();
+      const budget = await screen.findByRole("region", { name: "추가 구매 예산" });
+      await userEvent.click(within(budget).getByRole("button", { name: "0원" }));
+      const dialog = await screen.findByRole("alertdialog");
+      expect(dialog).toHaveTextContent(NOTICE);
+      await userEvent.click(within(dialog).getByRole("button", { name: "계속" }));
+      expect(status("cond-budget")).toHaveTextContent("0원, 내 옷장 옷만");
+      await userEvent.click(saveBtn());
+      await waitFor(() => expect(api.putConditions.mock.calls[0]![0].additionalBudgetKrw).toBe(0));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(await screen.findByText("내 옷장 옷 3벌로만 코디를 제안해요.")).toBeInTheDocument();
+    });
+
+    it("[금액 변경]은 0원을 풀고 직접 입력으로 보낸다", async () => {
+      api.getConditions.mockResolvedValue(EMPTY);
+      renderScreen();
+      const budget = await screen.findByRole("region", { name: "추가 구매 예산" });
+      await userEvent.click(within(budget).getByRole("button", { name: "0원" }));
+      await userEvent.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "금액 변경" }),
+      );
+      expect(status("cond-budget")).toHaveTextContent("아직 안 정함");
+      await waitFor(() => expect(screen.getByLabelText("예산 금액")).toHaveFocus());
+    });
+
+    it("직접 입력한 0은 글자마다 묻지 않고 입력란을 벗어날 때 한 번 묻는다", async () => {
+      api.getConditions.mockResolvedValue(EMPTY);
+      renderScreen();
+      const budget = await screen.findByRole("region", { name: "추가 구매 예산" });
+      await userEvent.click(within(budget).getByRole("button", { name: "직접 입력" }));
+      const input = screen.getByLabelText("예산 금액");
+      await userEvent.type(input, "000");
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      fireEvent.blur(input);
+      const dialog = await screen.findByRole("alertdialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "계속" }));
+      expect(within(budget).getByRole("button", { name: "0원" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("저장된 0원을 불러올 때는 알림 없이, 빈 옷장이면 사진 등록·금액 변경을 안내한다", async () => {
+      api.getConditions.mockResolvedValue({ ...EMPTY, additionalBudgetKrw: 0, updatedAt: "x" });
+      wardrobe.getRecommendationCheck.mockResolvedValue({
+        budgetMode: "owned_only",
+        blockedReason: "WARDROBE_EMPTY",
+        missing: ["top", "bottom"],
+        wardrobeCount: 0,
+      });
+      const nav = vi.fn();
+      const onNav = (e: Event) => nav((e as CustomEvent<string>).detail);
+      window.addEventListener("auth-navigation", onNav);
+      renderScreen();
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("0원 코디를 이용하려면 먼저 내 옷장에 옷을 등록해주세요.");
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      await userEvent.click(within(alert).getByRole("button", { name: "사진 등록" }));
+      expect(nav).toHaveBeenCalledWith("/garment");
+      await userEvent.click(within(alert).getByRole("button", { name: "금액 변경" }));
+      expect(status("cond-budget")).toHaveTextContent("아직 안 정함");
+      window.removeEventListener("auth-navigation", onNav);
+    });
+
+    it("옷이 부족하면 없는 종류를 알린다", async () => {
+      api.getConditions.mockResolvedValue({ ...EMPTY, additionalBudgetKrw: 0, updatedAt: "x" });
+      wardrobe.getRecommendationCheck.mockResolvedValue({
+        budgetMode: "owned_only",
+        blockedReason: "WARDROBE_INSUFFICIENT",
+        missing: ["top"],
+        wardrobeCount: 2,
+      });
+      renderScreen();
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "내 옷장 옷만으로는 아직 코디를 완성할 수 없어요. 상의를 하나 이상 등록해 주세요.",
+      );
+    });
   });
 });

@@ -2,6 +2,16 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Minus, Plus } from "lucide-react";
 import { AccountLink } from "@/components/auth/AuthShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -14,6 +24,7 @@ import {
   DEFAULT_TEMP,
   EMPTY_VALUES,
   OCCASIONS,
+  OWNED_ONLY_NOTICE,
   TEMP_MAX,
   TEMP_MIN,
   clamp,
@@ -37,6 +48,7 @@ import {
   type Conditions,
 } from "@/lib/conditions";
 import { RangeBar } from "./RangeBar";
+import { OwnedOnlyNotice } from "./OwnedOnlyNotice";
 
 export const CONDITIONS_QUERY_KEY = ["onboarding", "conditions"] as const;
 type FieldKey = keyof ConditionValues;
@@ -170,6 +182,13 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
   const [saveError, setSaveError] = useState<ApiError | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
   const initialized = useRef(false);
+  /**
+   * 0원 알림(WARD-001): 0원으로 들어갈 때 한 번. 저장된 0원을 불러올 때는 띄우지 않고,
+   * 다른 금액으로 바꿨다가 다시 0원이 되면 다시 알린다.
+   */
+  const zeroAck = useRef(false);
+  const [zeroPrompt, setZeroPrompt] = useState<{ thenSave: boolean } | null>(null);
+  const budgetInput = useRef<HTMLInputElement>(null);
 
   // Temperature and formality start from their defaults; saving sends them as chosen values.
   const saved: ConditionValues | null = query.data ? withDefaults(toValues(query.data)) : null;
@@ -177,7 +196,8 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
   const applyValues = (v: ConditionValues) => {
     setValues(v);
     const b = v.additionalBudgetKrw;
-    const custom = typeof b === "number" && !(BUDGET_PRESETS as readonly number[]).includes(b);
+    const custom =
+      typeof b === "number" && b !== 0 && !(BUDGET_PRESETS as readonly number[]).includes(b);
     setBudgetCustom(custom);
     setBudgetText(custom ? formatBudgetInput(String(b)) : "");
   };
@@ -185,6 +205,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
   useEffect(() => {
     if (initialized.current || !query.data) return;
     initialized.current = true;
+    zeroAck.current = query.data.additionalBudgetKrw === 0;
     const draft = readDraft();
     if (draft) {
       applyValues(withDefaults(draft));
@@ -218,6 +239,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
     onSuccess: (result: Conditions) => {
       queryClient.setQueryData(CONDITIONS_QUERY_KEY, result);
       applyValues(withDefaults(toValues(result)));
+      zeroAck.current = result.additionalBudgetKrw === 0;
       clearDraft();
       setDraftRestored(false);
       setServerErrors({});
@@ -265,8 +287,40 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
 
   const handleSave = () => {
     if (!canSave) return;
+    if (values.additionalBudgetKrw === 0 && !zeroAck.current) {
+      setZeroPrompt({ thenSave: true });
+      return;
+    }
     setSaveError(null);
     mutation.mutate(toValues(values));
+  };
+
+  /** 사용자가 고른 예산. 0원이 처음이면 알림부터, 다른 금액이면 다음 0원 때 다시 알린다. */
+  const setBudget = (next: ConditionValues["additionalBudgetKrw"]) => {
+    if (next !== 0) zeroAck.current = false;
+    update({ additionalBudgetKrw: next });
+    if (next === 0 && !zeroAck.current) setZeroPrompt({ thenSave: false });
+  };
+  const confirmZero = () => {
+    zeroAck.current = true;
+    const thenSave = zeroPrompt?.thenSave;
+    setZeroPrompt(null);
+    setBudgetCustom(false);
+    setBudgetText("");
+    update({ additionalBudgetKrw: 0 });
+    if (thenSave) {
+      setSaveError(null);
+      mutation.mutate(toValues({ ...values, additionalBudgetKrw: 0 }));
+    }
+  };
+  /** 금액 변경: 0원을 풀고 직접 입력란으로 보낸다. */
+  const changeBudget = () => {
+    setZeroPrompt(null);
+    zeroAck.current = false;
+    setBudgetCustom(true);
+    setBudgetText("");
+    update({ additionalBudgetKrw: null });
+    window.setTimeout(() => budgetInput.current?.focus(), 0);
   };
 
   const sessionExpired =
@@ -300,7 +354,16 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
 
   // --- 예산 ---
   const b = values.additionalBudgetKrw;
-  const budgetStatus = b === null ? "아직 안 정함" : b === "any" ? "상한 없음" : formatKrw(b);
+  const budgetStatus =
+    b === null
+      ? "아직 안 정함"
+      : b === "any"
+        ? "상한 없음"
+        : b === 0
+          ? "0원, 내 옷장 옷만"
+          : formatKrw(b);
+  // 저장된 값이 0원일 때만 서버에 옷장 상태를 묻는다(입력 중인 값으로는 묻지 않음).
+  const savedOwnedOnly = query.data?.additionalBudgetKrw === 0 && b === 0;
 
   const occ = values.occasions;
   const occStatus =
@@ -517,6 +580,17 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
               error={errors.additionalBudgetKrw}
             >
               <div role="group" aria-label="추가 구매 예산" className="flex flex-wrap gap-2">
+                <Chip
+                  selected={!budgetCustom && b === 0}
+                  disabled={locked}
+                  onClick={() => {
+                    setBudgetCustom(false);
+                    setBudgetText("");
+                    setBudget(b === 0 ? null : 0);
+                  }}
+                >
+                  0원
+                </Chip>
                 {BUDGET_PRESETS.map((p) => {
                   const selected = !budgetCustom && b === p;
                   return (
@@ -527,7 +601,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                       onClick={() => {
                         setBudgetCustom(false);
                         setBudgetText("");
-                        update({ additionalBudgetKrw: selected ? null : p });
+                        setBudget(selected ? null : p);
                       }}
                     >
                       {p / 10_000}만
@@ -557,7 +631,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                   onClick={() => {
                     setBudgetCustom(false);
                     setBudgetText("");
-                    update({ additionalBudgetKrw: b === "any" ? null : "any" });
+                    setBudget(b === "any" ? null : "any");
                   }}
                 >
                   상한 없음
@@ -568,6 +642,7 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                   <span className="text-sm text-muted-foreground">예산 금액</span>
                   <span className="mt-1.5 flex items-center gap-2 rounded-xl bg-background px-4 ring-1 ring-input focus-within:ring-2 focus-within:ring-ring">
                     <input
+                      ref={budgetInput}
                       inputMode="numeric"
                       aria-label="예산 금액"
                       aria-invalid={budgetOutOfRange || undefined}
@@ -576,8 +651,15 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                       placeholder="150,000"
                       onChange={(e) => {
                         const text = formatBudgetInput(e.target.value);
+                        const next = parseBudgetInput(text);
                         setBudgetText(text);
-                        update({ additionalBudgetKrw: parseBudgetInput(text) });
+                        // 글자마다 알리지 않는다: 0원 알림은 입력란을 벗어날 때.
+                        if (next !== 0) zeroAck.current = false;
+                        update({ additionalBudgetKrw: next });
+                      }}
+                      onBlur={() => {
+                        if (parseBudgetInput(budgetText) === 0 && !zeroAck.current)
+                          setZeroPrompt({ thenSave: false });
                       }}
                       className="h-12 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none"
                     />
@@ -596,9 +678,16 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
                 />
               )}
               <p className="text-xs leading-relaxed text-muted-foreground">
-                갖고 있는 기준 옷 가격은 빼고, 더 살 옷의 참고가 합계예요. 실제 판매가·재고와 다를
-                수 있어요.
+                {b === 0
+                  ? "추가로 살 옷 없이 내 옷장에 등록한 옷만 써요."
+                  : "갖고 있는 기준 옷 가격은 빼고, 더 살 옷의 참고가 합계예요. 실제 판매가·재고와 다를 수 있어요."}
               </p>
+              {savedOwnedOnly && !dirty && (
+                <OwnedOnlyNotice
+                  onRegister={() => navigate("/garment")}
+                  onChangeBudget={changeBudget}
+                />
+              )}
             </Section>
 
             {saveError && !sessionExpired && saveError.code !== "INVALID_INPUT" && (
@@ -644,6 +733,18 @@ export function ConditionsScreen({ authReady = true }: { authReady?: boolean }) 
           </div>
         )}
       </div>
+      <AlertDialog open={zeroPrompt !== null} onOpenChange={(open) => !open && setZeroPrompt(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>추가 구매 예산 0원</AlertDialogTitle>
+            <AlertDialogDescription>{OWNED_ONLY_NOTICE}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={changeBudget}>금액 변경</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmZero}>계속</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

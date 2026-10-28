@@ -21,6 +21,14 @@ const apiMocks = vi.hoisted(() => ({
   putGarmentAttributes: vi.fn(),
 }));
 
+// WARD-001: these screens are tested without a wardrobe server; the list starts empty.
+vi.mock("@/lib/wardrobe-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/wardrobe-api")>()),
+  getWardrobe: vi.fn().mockResolvedValue({ items: [], referenceItemId: null }),
+  selectReference: vi.fn(),
+  deleteWardrobeItem: vi.fn(),
+}));
+
 vi.mock("@/lib/onboarding-api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/onboarding-api")>();
   return {
@@ -244,7 +252,13 @@ describe("GarmentScreen 옷 정보 확인", { timeout: 15_000 }, () => {
     await userEvent.click(screen.getByRole("button", { name: "저장하기" }));
     await waitFor(() =>
       expect(apiMocks.putGarment).toHaveBeenCalledWith(
-        { garmentType: "pants", brand: "새 브랜드", productName: null, purchaseUrl: null },
+        {
+          garmentType: "pants",
+          brand: "새 브랜드",
+          productName: null,
+          purchaseUrl: null,
+          itemId: "g1",
+        },
         undefined,
       ),
     );
