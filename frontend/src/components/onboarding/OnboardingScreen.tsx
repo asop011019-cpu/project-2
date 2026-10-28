@@ -836,6 +836,10 @@ export function OnboardingScreen({
                 setError(null);
                 completeMutation.mutate();
               }}
+              onSaveLikes={() => {
+                track({ type: "save_likes" });
+                onComplete();
+              }}
             />
           ) : null}
         </div>
@@ -1048,6 +1052,7 @@ function SummaryStep({
   onRetry,
   onBack,
   onComplete,
+  onSaveLikes,
 }: {
   loading: boolean;
   failed: boolean;
@@ -1057,9 +1062,17 @@ function SummaryStep({
   onRetry: () => void;
   onBack: () => void;
   onComplete: () => void;
+  onSaveLikes: () => void;
 }) {
-  const reason = summary ? incompleteReason(summary) : null;
   const canComplete = summary?.session.progress.canComplete === true;
+  // Hearts are saved as they are tapped, so some likes are enough to move on (user,
+  // 2026-10-29). Unanswered styles stay unanswered; only answering all completes the session.
+  const likesOnly = !canComplete && (summary?.likedStyles.length ?? 0) > 0;
+  const reason = likesOnly
+    ? "좋아요한 스타일만 취향으로 반영해요. 나머지는 나중에 더 고를 수 있어요."
+    : summary
+      ? incompleteReason(summary)
+      : null;
   return (
     <section key="summary" className="animate-page mt-6">
       <p className="label-caps text-muted-foreground">03 — 취향 확인</p>
@@ -1109,7 +1122,11 @@ function SummaryStep({
       )}
       {/* A plain button instead of the swipe-to-turn page (user, 2026-10-28). */}
       <div className="mt-6 flex flex-col gap-3 md:flex-row">
-        <Button className="summary-action" disabled={!canComplete || busy} onClick={onComplete}>
+        <Button
+          className="summary-action"
+          disabled={!(canComplete || likesOnly) || busy}
+          onClick={likesOnly ? onSaveLikes : onComplete}
+        >
           {busy ? "저장하는 중…" : "취향 저장하고 사진 등록으로"}
         </Button>
         <Button variant="outline" className="summary-action" onClick={onBack}>

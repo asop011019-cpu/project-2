@@ -275,6 +275,37 @@ describe("OnboardingScreen", () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
+  it("일부만 좋아요해도 취향 저장으로 넘어가되, 완료·응답 요청은 보내지 않는다", async () => {
+    setupOnline(session());
+    api.getSummary.mockResolvedValue({
+      session: session({ progress: { ...session().progress, canComplete: false } }),
+      likedStyles: [
+        {
+          id: "a",
+          name: "스타일A",
+          genreGroupId: "g1",
+          order: 1,
+          explorationOrder: 1,
+          contentStatus: "ready",
+        },
+      ],
+      dislikedStyles: [],
+      skippedStyles: [],
+      unansweredStyleIds: ["b"],
+      likedImages: [],
+      isExploringOnly: false,
+    });
+    const onComplete = renderScreen();
+    await userEvent.click(await screen.findByRole("button", { name: "취향 확인하기" }));
+    const done = await screen.findByRole("button", { name: "취향 저장하고 사진 등록으로" });
+    await waitFor(() => expect(done).toBeEnabled());
+    expect(screen.getByText(/좋아요한 스타일만 취향으로 반영해요/)).toBeInTheDocument();
+    await userEvent.click(done);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(api.completeSession).not.toHaveBeenCalled();
+    expect(api.putStyleResponse).not.toHaveBeenCalled();
+  });
+
   it("complete 실패 시 이동 안 하고 성공 시 이동", async () => {
     setupOnline(session());
     api.getSummary.mockResolvedValue({
